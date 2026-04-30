@@ -1,0 +1,4 @@
+interface:
+  display_name: "Treadmil"
+  short_description: "Convert run workouts for treadmill timing."
+  default_prompt: "Use $treadmil to convert this run workout into treadmill speeds and rounded interval times."
