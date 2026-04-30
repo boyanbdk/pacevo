@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert running workout segments to treadmill speed and rounded duration."""
+"""Tailor running workout segments into speed, pace, time, or distance targets."""
 
 from __future__ import annotations
 
@@ -157,7 +157,7 @@ def print_interval_plan(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Convert run distance+pace or rest duration to treadmill instructions."
+        description="Convert run distance+pace, rest duration, or interval plan into running instructions."
     )
     parser.add_argument("--distance", type=float, help="Run segment distance in km.")
     parser.add_argument("--pace", type=parse_pace, help="Run pace in M:SS per km.")

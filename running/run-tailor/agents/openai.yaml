@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run Tailor"
+  short_description: "Tailor run workouts by effort and format."
+  default_prompt: "Use $run-tailor to adapt this running workout to my readiness and preferred output format."

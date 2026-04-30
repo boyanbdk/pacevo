@@ -1,56 +1,55 @@
 ---
-name: treadmil
-description: Convert outdoor running workouts from distances and paces into treadmill-ready steps with km/h speed plus either time-based or distance-based instructions. Use when the user provides a running workout, screenshot, intervals, distances in km/m, paces in min/km, walking rests, conversational pace, threshold runs, marathon long runs, or asks what treadmill speed and time/distance to use. Always ask whether the output should be time-based or distance-based, easy/cooldown pace, rest walking pace when rests exist, current feeling from 1-10, and desired push level before converting. For time-based output, always round run/rest durations up to the next 10-second increment.
+name: run-tailor
+description: Tailor running workouts from screenshots or text using the user's current readiness, desired effort, warm-up/cooldown paces, rest pace, and preferred output format. Use when the user provides intervals, tempo runs, threshold runs, marathon or long-run blocks, distances in km/m, paces in min/km, walking rests, or asks to adapt a run for treadmill or general execution. Always ask for output mode, easy/cooldown pace, rest walking pace when rests exist, current feeling from 1-10, and desired push level before finalizing.
 ---
 
-# Treadmil
+# Run Tailor
 
 ## Purpose
 
-Convert distance-based run workouts into treadmill instructions using:
+Adapt running workouts into clear execution plans using:
 
-- Treadmill speed in km/h.
-- Either time in seconds or treadmill distance targets, depending on what the user chooses.
-- Time-based durations rounded up to the next multiple of 10.
 - User-provided easy/warm-up and cool-down paces.
 - User-provided walking rest speed when the workout has walking rests.
 - A readiness adjustment from how the user feels and how hard they want to push.
+- The user's preferred output format: treadmill time-based, treadmill distance-based, or general running plan.
 
-The skill name is intentionally `treadmil`.
+Always display run intensity as both speed and pace: `12.0 km/h (5:00/km)`.
 
 ## Required Questions
 
-Before converting any new workout, ask these questions unless the user already provided the answers in the same request:
+Before converting or tailoring any new workout, ask these questions unless the user already provided the answers in the same request:
 
-1. Should this be time-based or distance-based on the treadmill?
+1. Should the output be treadmill time-based, treadmill distance-based, or a general running plan?
 2. What are your easy/warm-up pace and cool-down pace?
 3. What is your rest walking pace? Skip this question when the workout has no walking rests.
 4. How well do you feel today from `1` to `10`?
 5. How hard do you want to push yourself: `easy`, `normal`, or `hard`?
 
-Do not produce the final treadmill conversion until these are known. If the user provides only one conversational pace, ask whether it should be used for both warm-up and cool-down.
+Do not produce the final adjusted workout until these are known. If the user provides only one conversational pace, ask whether it should be used for both warm-up and cool-down.
 
 ## Workflow
 
 1. Ask the required questions above.
 2. Extract every workout step from the user text or image: warm-up, rests, repeats, intervals, threshold blocks, marathon/long-run blocks, and cool down.
 3. Decide target workout paces using the readiness algorithm.
-4. Convert each run segment for the chosen output mode:
-   - Time-based: show `km/h (pace/km) for N sec`.
-   - Distance-based: show `km/h (pace/km) until N km` or `km/h (pace/km) until N m`.
-5. Convert time-based run segments:
+4. Format run segments for the chosen output mode:
+   - Treadmill time-based: `km/h (pace/km) for N sec`.
+   - Treadmill distance-based: `km/h (pace/km) until N km` or `km/h (pace/km) until N m`.
+   - General running plan: `pace/km [km/h] for the prescribed distance/time`, keeping the original run structure.
+5. Convert time-based treadmill run segments:
    - `seconds = distance_km * pace_seconds_per_km`
    - `rounded_seconds = ceil(seconds / 10) * 10`
    - `speed_kmh = 3600 / pace_seconds_per_km`
-6. Convert distance-based run segments:
+6. Convert distance-based treadmill run segments:
    - Preserve the workout distance.
    - Show the target treadmill speed and the distance to stop at.
    - Do not convert run segments to time unless the user asks for a time estimate.
-7. Convert each walking rest:
+7. Convert walking rests:
    - Use the user-provided rest walking speed.
-   - If the rest is prescribed by time, keep it time-based and round up to the next 10 seconds.
+   - If the rest is prescribed by time, keep it time-based and round up to the next 10 seconds for treadmill-ready output.
    - If the rest is prescribed by distance, follow the selected output mode unless the user says otherwise.
-8. Present the treadmill workout as a numbered list or table with speed plus pace, chosen target (`time` or `distance`), and repeat/rest structure.
+8. Present the adjusted workout as a numbered list or table with speed plus pace, chosen target, and repeat/rest structure.
 
 ## Readiness Algorithm
 
@@ -93,7 +92,7 @@ For threshold runs, marathon long runs, tempo blocks, steady runs, or workouts w
 
 ## Conversion Rules
 
-For time-based run segments:
+For time-based treadmill run segments:
 
 ```text
 pace_seconds_per_km = minutes * 60 + seconds
@@ -102,21 +101,20 @@ segment_seconds = distance_km * pace_seconds_per_km
 rounded_segment_seconds = ceil(segment_seconds / 10) * 10
 ```
 
-Round displayed speeds to one decimal place unless the user asks for more precision.
-Always display pace beside speed for runs: `12.0 km/h (5:00/km)`. For walking rests, display speed and add pace only if the user asks.
-
-For distance-based run segments:
+For distance-based treadmill run segments:
 
 ```text
 speed_kmh = 3600 / pace_seconds_per_km
 treadmill_target = original_workout_distance
 ```
 
-Important: speed always comes from the target pace. In time-based mode, rounding upward can make the treadmill cover slightly more than the original distance, but it preserves the intended effort. In distance-based mode, preserve the exact workout distance and skip duration rounding for run segments.
+Round displayed speeds to one decimal place unless the user asks for more precision.
+
+Important: speed always comes from the target pace. In time-based mode, rounding upward can make the treadmill cover slightly more than the original distance, but it preserves the intended effort. In distance-based mode and general plans, preserve the workout's distance/time structure unless the user asks to transform it.
 
 ## Rounding Rule
 
-Always round durations up to a number divisible by 10:
+For treadmill time-based output, always round durations up to a number divisible by 10:
 
 - `93 sec -> 100 sec`
 - `61 sec -> 70 sec`
@@ -127,23 +125,21 @@ Do not round to the nearest 10; always round upward.
 
 ## Script
 
-Use `scripts/treadmil_convert.py` for deterministic calculations or to check arithmetic.
+Use `scripts/run_tailor.py` for deterministic pace, speed, duration, and interval calculations.
 
 Examples:
 
 ```bash
-python3 scripts/treadmil_convert.py --distance 0.8 --pace 4:00
-python3 scripts/treadmil_convert.py --distance 0.8 --pace 4:00 --mode distance
-python3 scripts/treadmil_convert.py --distance 1.6 --pace 6:40
-python3 scripts/treadmil_convert.py --rest-seconds 90 --rest-speed 5
-python3 scripts/treadmil_convert.py --reps 8 --target-pace 4:00 --pace-window 3:50-4:10 --push normal --feeling 7
+python3 scripts/run_tailor.py --distance 0.8 --pace 4:00
+python3 scripts/run_tailor.py --distance 0.8 --pace 4:00 --mode distance
+python3 scripts/run_tailor.py --distance 1.6 --pace 6:40
+python3 scripts/run_tailor.py --rest-seconds 90 --rest-speed 5
+python3 scripts/run_tailor.py --reps 8 --target-pace 4:00 --pace-window 3:50-4:10 --push normal --feeling 7
 ```
 
 ## Output Style
 
-Prefer this concise format:
-
-Time-based:
+Time-based treadmill:
 
 ```text
 Warm-up
@@ -153,12 +149,9 @@ Warm-up
 Main set
 1. 14.4 km/h (4:10/km) for 200 sec, then 5.0 km/h walk for 90 sec
 ...
-
-Cool down
-9.0 km/h (6:40/km) for 400 sec
 ```
 
-Distance-based:
+Distance-based treadmill:
 
 ```text
 Warm-up
@@ -168,9 +161,15 @@ Warm-up
 Main set
 1. 14.4 km/h (4:10/km) until 400 m, then 5.0 km/h walk for 60 sec
 ...
-
-Cool down
-9.0 km/h (6:40/km) until 1.0 km
 ```
 
-Include the source pace in parentheses for interval runs when useful, especially if the workout has progression.
+General running plan:
+
+```text
+Warm-up
+1. 2.0 km at 6:40/km (9.0 km/h)
+
+Main set
+1. 800 m at 4:10/km (14.4 km/h), then 90 sec walk
+...
+```
