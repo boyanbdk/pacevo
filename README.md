@@ -2,6 +2,33 @@
 
 Tools to optimize and adapt workouts.
 
+## Run Tailor Web App
+
+This repo now includes a local Next.js MVP for Run Tailor.
+
+```bash
+npm install
+npm run dev
+```
+
+The app includes:
+
+- Local login/register gate for the MVP.
+- Dashboard, new-workout flow, saved workout detail, and settings pages.
+- Paste-based workout extraction with review flags.
+- TypeScript parity port of the current running interval readiness logic.
+- Satisfaction-loop regeneration with revision history.
+- Local workout persistence in the browser.
+- PNG, PDF, and DOCX export actions for the adjusted workout card.
+
+Verification:
+
+```bash
+npm test
+npm run build
+npm audit --omit=dev
+```
+
 ## Running
 
 The `running/` folder contains a reusable workflow for tailoring running workouts from screenshots or text. The goal is to preserve the intent of the original workout while adjusting the actual execution based on:
