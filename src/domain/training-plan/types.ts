@@ -1,0 +1,109 @@
+// TypeScript types for the training plan generator.
+// Must stay in sync with schemas/inputs.schema.json and schemas/plan.schema.json.
+
+export type GoalRace = "5K" | "10K" | "half" | "marathon";
+export type Level = "beginner" | "intermediate" | "advanced";
+export type Phase = "base" | "build" | "peak" | "taper";
+export type Surface = "road" | "trail" | "treadmill" | "track" | "mixed";
+export type VdotSource = "race" | "riegel_estimate" | "hr_fallback" | "none";
+
+export type SessionType =
+  | "easy"
+  | "long"
+  | "tempo"
+  | "interval"
+  | "repetition"
+  | "marathon_pace"
+  | "recovery"
+  | "strides"
+  | "fartlek"
+  | "hills"
+  | "cross"
+  | "rest";
+
+export interface RecentRace {
+  distance_m: number;
+  time_s: number;
+}
+
+export interface PlanInputs {
+  goal_race: GoalRace;
+  goal_date: string; // ISO date
+  current_weekly_km: number;
+  longest_recent_km: number;
+  recent_race?: RecentRace | null;
+  age: number;
+  resting_hr?: number | null;
+  max_hr?: number | null;
+  days_per_week: number;
+  session_minutes_cap?: number | null;
+  long_run_day?: string;
+  surface?: Surface;
+  injury_flags?: string[];
+}
+
+export interface Paces {
+  E_low: number;
+  E_high: number;
+  M: number | null;
+  T: number | null;
+  I: number | null;
+  R: number | null;
+}
+
+export interface HrZones {
+  Z1: [number, number];
+  Z2: [number, number];
+  Z3: [number, number];
+  Z4: [number, number];
+  Z5: [number, number];
+}
+
+export interface PlanMeta {
+  goal_race: GoalRace;
+  goal_date: string;
+  level: Level;
+  weeks_total: number;
+  start_date: string;
+  vdot: number | null;
+  vdot_source: VdotSource;
+  peak_weekly_km: number;
+  hrmax: number;
+  generated_at: string;
+}
+
+export interface PlannedSession {
+  day_index: number;
+  date: string;
+  type: SessionType;
+  target_km: number | null;
+  target_duration_min: number | null;
+  pace_low_s_km: number | null;
+  pace_high_s_km: number | null;
+  hr_zone: string | null;
+  target_rpe: number | null;
+  description: string;
+  rationale: string;
+  warmup: string | null;
+  main_set: string | null;
+  cooldown: string | null;
+}
+
+export interface TrainingWeek {
+  week_index: number;
+  phase: Phase;
+  is_deload: boolean;
+  total_km: number;
+  long_run_km: number;
+  quality_count: number;
+  acwr: number | null;
+  sessions: PlannedSession[];
+}
+
+export interface TrainingPlan {
+  meta: PlanMeta;
+  paces: Paces;
+  hr_zones: HrZones;
+  weeks: TrainingWeek[];
+  warnings: string[];
+}
