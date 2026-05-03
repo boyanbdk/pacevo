@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "training-plan-generator/inputs",
+  "title": "TrainingPlanInputs",
+  "description": "All information needed to generate a personalised running training plan.",
+  "type": "object",
+  "required": ["goal_race", "goal_date", "current_weekly_km", "longest_recent_km", "days_per_week", "age"],
+  "additionalProperties": false,
+  "properties": {
+    "goal_race": {
+      "type": "string",
+      "enum": ["5K", "10K", "half", "marathon"],
+      "description": "Target race distance."
+    },
+    "goal_date": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO 8601 date of the goal race (YYYY-MM-DD)."
+    },
+    "current_weekly_km": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Average weekly running distance in km over the past 4 weeks."
+    },
+    "longest_recent_km": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Longest single run in km over the past 4 weeks."
+    },
+    "recent_race": {
+      "type": "object",
+      "required": ["distance_m", "time_s"],
+      "additionalProperties": false,
+      "description": "Most recent race or time-trial result. Used to derive VDOT. Optional.",
+      "properties": {
+        "distance_m": {
+          "type": "integer",
+          "minimum": 1000,
+          "description": "Race distance in metres."
+        },
+        "time_s": {
+          "type": "integer",
+          "minimum": 60,
+          "description": "Finish time in seconds."
+        }
+      }
+    },
+    "age": {
+      "type": "integer",
+      "minimum": 14,
+      "maximum": 100,
+      "description": "Runner age in years. Used for Tanaka HRmax estimation."
+    },
+    "resting_hr": {
+      "type": "integer",
+      "minimum": 30,
+      "maximum": 100,
+      "description": "Resting heart rate in bpm. Optional."
+    },
+    "max_hr": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 230,
+      "description": "Measured HRmax. If omitted, estimated via Tanaka: 208 - 0.7 * age."
+    },
+    "days_per_week": {
+      "type": "integer",
+      "minimum": 3,
+      "maximum": 7,
+      "description": "Number of days available for running per week."
+    },
+    "session_minutes_cap": {
+      "type": "integer",
+      "minimum": 20,
+      "maximum": 240,
+      "description": "Maximum duration per training session in minutes. Optional."
+    },
+    "long_run_day": {
+      "type": "string",
+      "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+      "description": "Preferred day for the long run. Defaults to saturday."
+    },
+    "surface": {
+      "type": "string",
+      "enum": ["road", "trail", "treadmill", "track", "mixed"],
+      "description": "Primary running surface. Defaults to road."
+    },
+    "injury_flags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Active injury notes, e.g. ['left knee pain', 'plantar fasciitis']. Empty list if none."
+    }
+  }
+}

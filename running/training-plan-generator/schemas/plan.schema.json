@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "training-plan-generator/plan",
+  "title": "TrainingPlan",
+  "description": "A complete multi-week running training plan.",
+  "type": "object",
+  "required": ["meta", "paces", "weeks"],
+  "additionalProperties": false,
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["goal_race", "goal_date", "level", "weeks_total", "start_date", "vdot", "peak_weekly_km"],
+      "additionalProperties": false,
+      "properties": {
+        "goal_race":       { "type": "string", "enum": ["5K", "10K", "half", "marathon"] },
+        "goal_date":       { "type": "string", "format": "date" },
+        "level":           { "type": "string", "enum": ["beginner", "intermediate", "advanced"] },
+        "weeks_total":     { "type": "integer", "minimum": 4 },
+        "start_date":      { "type": "string", "format": "date" },
+        "vdot":            { "type": ["integer", "null"], "description": "Derived VDOT or null if unavailable." },
+        "vdot_source":     { "type": "string", "enum": ["race", "riegel_estimate", "hr_fallback", "none"] },
+        "peak_weekly_km":  { "type": "number", "minimum": 0 },
+        "hrmax":           { "type": "integer" },
+        "generated_at":    { "type": "string", "format": "date-time" }
+      }
+    },
+    "paces": {
+      "type": "object",
+      "description": "Training paces in seconds per km, keyed by Daniels zone label.",
+      "required": ["E_low", "E_high", "M", "T", "I", "R"],
+      "additionalProperties": false,
+      "properties": {
+        "E_low":  { "type": "integer", "description": "Easy lower bound s/km." },
+        "E_high": { "type": "integer", "description": "Easy upper bound s/km." },
+        "M":      { "type": ["integer", "null"], "description": "Marathon pace s/km." },
+        "T":      { "type": ["integer", "null"], "description": "Threshold pace s/km." },
+        "I":      { "type": ["integer", "null"], "description": "Interval pace s/km." },
+        "R":      { "type": ["integer", "null"], "description": "Repetition pace s/km." }
+      }
+    },
+    "hr_zones": {
+      "type": "object",
+      "description": "Heart-rate zones as [low_bpm, high_bpm] arrays.",
+      "properties": {
+        "Z1": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 },
+        "Z2": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 },
+        "Z3": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 },
+        "Z4": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 },
+        "Z5": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 }
+      }
+    },
+    "weeks": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "object",
+        "required": ["week_index", "phase", "is_deload", "total_km", "long_run_km", "sessions"],
+        "additionalProperties": false,
+        "properties": {
+          "week_index":    { "type": "integer", "minimum": 1 },
+          "phase":         { "type": "string", "enum": ["base", "build", "peak", "taper"] },
+          "is_deload":     { "type": "boolean" },
+          "total_km":      { "type": "number", "minimum": 0 },
+          "long_run_km":   { "type": "number", "minimum": 0 },
+          "quality_count": { "type": "integer", "minimum": 0 },
+          "acwr":          { "type": ["number", "null"], "description": "Acute:chronic workload ratio at start of this week." },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["day_index", "date", "type", "description"],
+              "additionalProperties": false,
+              "properties": {
+                "day_index": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 7,
+                  "description": "Day within the week, 1=Monday."
+                },
+                "date":        { "type": "string", "format": "date" },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "easy", "long", "tempo", "interval", "repetition",
+                    "marathon_pace", "recovery", "strides", "fartlek",
+                    "hills", "cross", "rest"
+                  ]
+                },
+                "target_km":           { "type": ["number", "null"] },
+                "target_duration_min": { "type": ["integer", "null"] },
+                "pace_low_s_km":       { "type": ["integer", "null"] },
+                "pace_high_s_km":      { "type": ["integer", "null"] },
+                "hr_zone":             { "type": ["string", "null"], "enum": ["Z1","Z2","Z3","Z4","Z5",null] },
+                "target_rpe":          { "type": ["integer", "null"], "minimum": 1, "maximum": 10 },
+                "description":         { "type": "string" },
+                "rationale":           { "type": "string" },
+                "warmup":              { "type": ["string", "null"] },
+                "main_set":            { "type": ["string", "null"] },
+                "cooldown":            { "type": ["string", "null"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "description": "Non-fatal guardrail alerts produced during generation.",
+      "items": { "type": "string" }
+    }
+  }
+}

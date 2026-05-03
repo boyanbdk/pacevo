@@ -1,0 +1,18 @@
+{
+  "goal_race": "marathon",
+  "goal_date": "2026-10-18",
+  "current_weekly_km": 95,
+  "longest_recent_km": 30,
+  "recent_race": {
+    "distance_m": 21098,
+    "time_s": 5400
+  },
+  "age": 34,
+  "resting_hr": 44,
+  "max_hr": 186,
+  "days_per_week": 6,
+  "session_minutes_cap": 180,
+  "long_run_day": "sunday",
+  "surface": "road",
+  "injury_flags": []
+}

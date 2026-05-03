@@ -1,0 +1,18 @@
+{
+  "goal_race": "half",
+  "goal_date": "2026-09-12",
+  "current_weekly_km": 45,
+  "longest_recent_km": 16,
+  "recent_race": {
+    "distance_m": 10000,
+    "time_s": 2820
+  },
+  "age": 28,
+  "resting_hr": 52,
+  "max_hr": null,
+  "days_per_week": 5,
+  "session_minutes_cap": 90,
+  "long_run_day": "sunday",
+  "surface": "road",
+  "injury_flags": []
+}

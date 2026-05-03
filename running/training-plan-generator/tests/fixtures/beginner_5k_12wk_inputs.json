@@ -1,0 +1,15 @@
+{
+  "goal_race": "5K",
+  "goal_date": "2026-08-01",
+  "current_weekly_km": 16,
+  "longest_recent_km": 5,
+  "recent_race": null,
+  "age": 32,
+  "resting_hr": 60,
+  "max_hr": null,
+  "days_per_week": 4,
+  "session_minutes_cap": 60,
+  "long_run_day": "saturday",
+  "surface": "road",
+  "injury_flags": []
+}
