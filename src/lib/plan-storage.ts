@@ -126,16 +126,25 @@ export function logSession(planId: string, session: Omit<CompletedSession, "id" 
   const plan = getPlan(planId);
   if (!plan) throw new Error(`Plan ${planId} not found`);
 
+  const existing = plan.completedSessions.find(
+    (s) => s.weekIndex === session.weekIndex && s.dayIndex === session.dayIndex,
+  );
+
   const completed: CompletedSession = {
     ...session,
-    id: crypto.randomUUID(),
+    id: existing?.id ?? crypto.randomUUID(),
     planId,
-    createdAt: new Date().toISOString(),
+    createdAt: existing?.createdAt ?? new Date().toISOString(),
   };
 
   const updated: SavedPlan = {
     ...plan,
-    completedSessions: [...plan.completedSessions, completed],
+    completedSessions: [
+      ...plan.completedSessions.filter(
+        (s) => s.weekIndex !== session.weekIndex || s.dayIndex !== session.dayIndex,
+      ),
+      completed,
+    ],
     updatedAt: new Date().toISOString(),
   };
   savePlan(updated);
@@ -144,7 +153,7 @@ export function logSession(planId: string, session: Omit<CompletedSession, "id" 
 
 export function getCompletedSession(planId: string, weekIndex: number, dayIndex: number): CompletedSession | undefined {
   const plan = getPlan(planId);
-  return plan?.completedSessions.find((s) => s.weekIndex === weekIndex && s.dayIndex === dayIndex);
+  return plan?.completedSessions.findLast((s) => s.weekIndex === weekIndex && s.dayIndex === dayIndex);
 }
 
 // ---------------------------------------------------------------------------

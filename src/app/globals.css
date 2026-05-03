@@ -215,6 +215,18 @@ button {
   border-color: var(--line);
 }
 
+.button.compact {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.icon-button {
+  width: 38px;
+  min-height: 38px;
+  padding: 0;
+}
+
 .button.danger {
   background: rgba(255, 107, 107, 0.14);
   border-color: rgba(255, 107, 107, 0.36);
@@ -1163,6 +1175,95 @@ button {
   margin: 0;
   font-size: 14px;
   line-height: 1.5;
+}
+
+.adapt-event-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Why this changed sheet */
+.sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.56);
+  backdrop-filter: blur(6px);
+}
+
+.why-sheet {
+  width: min(520px, 100%);
+  height: 100%;
+  overflow: auto;
+  border-left: 1px solid var(--line);
+  background: rgba(17, 20, 23, 0.98);
+  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.36);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.why-sheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.why-sheet-header h2 {
+  margin: 4px 0 0;
+  font-size: 24px;
+}
+
+.why-sheet-section {
+  display: grid;
+  gap: 8px;
+}
+
+.why-sheet-section p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.why-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.why-stat,
+.why-list-row {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.why-stat {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.why-stat strong {
+  font-size: 14px;
+}
+
+.why-list {
+  display: grid;
+  gap: 8px;
+}
+
+.why-list-row {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  line-height: 1.45;
 }
 
 /* ============================================================

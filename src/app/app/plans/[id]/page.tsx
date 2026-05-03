@@ -1,12 +1,12 @@
 "use client";
 
-import { ArrowLeft, ChevronRight, GitBranch, History, LayoutGrid, Target, Zap } from "lucide-react";
+import { ArrowLeft, ChevronRight, GitBranch, History, LayoutGrid, Target, X, Zap } from "lucide-react";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { formatPace } from "@/domain/training-plan";
 import type { TrainingWeek } from "@/domain/training-plan/types";
-import type { AdaptationEvent, PlanVersion, SavedPlan } from "@/lib/plan-storage";
+import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
 import { getPlan } from "@/lib/plan-storage";
 
 // ---------------------------------------------------------------------------
@@ -77,6 +77,15 @@ const DAY_ABBRS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 function fmtDist(km: number | null): string {
   if (km === null || km === 0) return "—";
   return `${km.toFixed(1)} km`;
+}
+
+function countLoggedSessions(sessions: CompletedSession[], weekIndex?: number): number {
+  const keys = new Set<string>();
+  for (const session of sessions) {
+    if (weekIndex !== undefined && session.weekIndex !== weekIndex) continue;
+    keys.add(`${session.weekIndex}-${session.dayIndex}`);
+  }
+  return keys.size;
 }
 
 function weekLabel(week: TrainingWeek): string {
@@ -221,7 +230,7 @@ function WeekCard({
 function PlanSummary({ plan }: { plan: SavedPlan }) {
   const { meta, paces, weeks } = plan.plan;
   const totalKm = weeks.reduce((s, w) => s + w.total_km, 0);
-  const loggedCount = plan.completedSessions.length;
+  const loggedCount = countLoggedSessions(plan.completedSessions);
   return (
     <div className="grid-3" style={{ marginBottom: 18 }}>
       <div className="panel">
@@ -251,7 +260,13 @@ function PlanSummary({ plan }: { plan: SavedPlan }) {
 // Adaptation timeline
 // ---------------------------------------------------------------------------
 
-function AdaptationTimeline({ events }: { events: AdaptationEvent[] }) {
+function AdaptationTimeline({
+  events,
+  onSelect,
+}: {
+  events: AdaptationEvent[];
+  onSelect: (event: AdaptationEvent) => void;
+}) {
   if (events.length === 0) {
     return (
       <div className="empty" style={{ minHeight: 140 }}>
@@ -284,11 +299,161 @@ function AdaptationTimeline({ events }: { events: AdaptationEvent[] }) {
                 </span>
               </div>
               <p className="adapt-event-text">{ev.explanation}</p>
-              <span className="muted" style={{ fontSize: 12 }}>→ Version {ev.newVersionIndex + 1}</span>
+              <div className="adapt-event-footer">
+                <span className="muted" style={{ fontSize: 12 }}>→ Version {ev.newVersionIndex + 1}</span>
+                <button className="button ghost compact" type="button" onClick={() => onSelect(ev)}>
+                  Details
+                </button>
+              </div>
             </div>
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Why this changed sheet
+// ---------------------------------------------------------------------------
+
+function describePlanDiff(plan: SavedPlan, event: AdaptationEvent): string[] {
+  const nextVersion = plan.versions.find((v) => v.versionIndex === event.newVersionIndex);
+  const prevVersion = plan.versions.find((v) => v.versionIndex === event.newVersionIndex - 1);
+  if (!nextVersion || !prevVersion) return [];
+
+  const changes: string[] = [];
+  const prevTotal = prevVersion.plan.weeks.reduce((sum, week) => sum + week.total_km, 0);
+  const nextTotal = nextVersion.plan.weeks.reduce((sum, week) => sum + week.total_km, 0);
+  const totalDelta = Math.round((nextTotal - prevTotal) * 10) / 10;
+  if (totalDelta !== 0) {
+    changes.push(`Plan volume ${totalDelta > 0 ? "increased" : "reduced"} by ${Math.abs(totalDelta).toFixed(1)} km.`);
+  }
+
+  for (const nextWeek of nextVersion.plan.weeks) {
+    const prevWeek = prevVersion.plan.weeks[nextWeek.week_index];
+    if (!prevWeek) continue;
+
+    if (prevWeek.total_km !== nextWeek.total_km) {
+      changes.push(`Week ${nextWeek.week_index + 1}: ${prevWeek.total_km.toFixed(1)} km → ${nextWeek.total_km.toFixed(1)} km.`);
+    }
+
+    for (const nextSession of nextWeek.sessions) {
+      const prevSession = prevWeek.sessions.find((s) => s.day_index === nextSession.day_index);
+      if (!prevSession) continue;
+      const typeChanged = prevSession.type !== nextSession.type;
+      const distanceChanged = prevSession.target_km !== nextSession.target_km;
+      const paceChanged =
+        prevSession.pace_low_s_km !== nextSession.pace_low_s_km ||
+        prevSession.pace_high_s_km !== nextSession.pace_high_s_km;
+
+      if (typeChanged) {
+        changes.push(
+          `Week ${nextWeek.week_index + 1} ${DAY_ABBRS[nextSession.day_index]}: ${SESSION_LABELS[prevSession.type]} → ${SESSION_LABELS[nextSession.type]}.`,
+        );
+      } else if (distanceChanged) {
+        changes.push(
+          `Week ${nextWeek.week_index + 1} ${DAY_ABBRS[nextSession.day_index]}: ${fmtDist(prevSession.target_km)} → ${fmtDist(nextSession.target_km)}.`,
+        );
+      } else if (paceChanged) {
+        changes.push(`Week ${nextWeek.week_index + 1} ${DAY_ABBRS[nextSession.day_index]}: target pace updated.`);
+      }
+
+      if (changes.length >= 6) return changes;
+    }
+  }
+
+  return changes;
+}
+
+function WhyThisChangedSheet({
+  event,
+  plan,
+  onClose,
+}: {
+  event: AdaptationEvent;
+  plan: SavedPlan;
+  onClose: () => void;
+}) {
+  const triggeredSessions = event.triggeredBySessionIds
+    .map((sessionId) => plan.completedSessions.find((s) => s.id === sessionId))
+    .filter(Boolean) as CompletedSession[];
+  const changes = describePlanDiff(plan, event);
+
+  return (
+    <div className="sheet-overlay" role="presentation" onClick={onClose}>
+      <section
+        className="why-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Why this changed"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="why-sheet-header">
+          <div>
+            <span className="card-kicker">Why this changed</span>
+            <h2>{RULE_LABELS[event.rule] ?? event.rule}</h2>
+          </div>
+          <button className="button ghost icon-button" type="button" onClick={onClose} aria-label="Close">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="why-sheet-section">
+          <span className="field-label">Reason</span>
+          <p>{event.explanation}</p>
+        </div>
+
+        <div className="why-sheet-grid">
+          <div className="why-stat">
+            <span className="muted">Rule</span>
+            <strong>{RULE_LABELS[event.rule] ?? event.rule}</strong>
+          </div>
+          <div className="why-stat">
+            <span className="muted">Created</span>
+            <strong>
+              {new Date(event.firedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+            </strong>
+          </div>
+          <div className="why-stat">
+            <span className="muted">Version</span>
+            <strong>{event.newVersionIndex + 1}</strong>
+          </div>
+        </div>
+
+        {triggeredSessions.length > 0 && (
+          <div className="why-sheet-section">
+            <span className="field-label">Triggered by</span>
+            <div className="why-list">
+              {triggeredSessions.map((session) => (
+                <div key={session.id} className="why-list-row">
+                  <strong>Week {session.weekIndex + 1} · {DAY_ABBRS[session.dayIndex]}</strong>
+                  <span className="muted">
+                    {session.actualKm ? `${session.actualKm.toFixed(1)} km` : "No distance"}
+                    {session.avgHR ? ` · ${session.avgHR} bpm` : ""}
+                    {session.rpe ? ` · RPE ${session.rpe}` : ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="why-sheet-section">
+          <span className="field-label">Changed in the plan</span>
+          {changes.length > 0 ? (
+            <div className="why-list">
+              {changes.map((change, index) => (
+                <div key={index} className="why-list-row">
+                  <span>{change}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">The rule updated plan metadata or paces without changing visible sessions.</p>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
@@ -331,6 +496,7 @@ export default function PlanDetailPage() {
   const [plan, setPlan] = useState<SavedPlan | null>(null);
   const [weekIndex, setWeekIndex] = useState(0);
   const [tab, setTab] = useState<Tab>("plan");
+  const [selectedEvent, setSelectedEvent] = useState<AdaptationEvent | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -350,7 +516,7 @@ export default function PlanDetailPage() {
   const week = plan.plan.weeks[weekIndex];
 
   function loggedCountForWeek(wi: number): number {
-    return plan!.completedSessions.filter((c) => c.weekIndex === wi).length;
+    return countLoggedSessions(plan!.completedSessions, wi);
   }
 
   return (
@@ -478,7 +644,7 @@ export default function PlanDetailPage() {
           <p className="muted" style={{ marginBottom: 16 }}>
             Every time the plan adjusts based on your logged sessions, the reason is recorded here.
           </p>
-          <AdaptationTimeline events={plan.adaptationEvents} />
+          <AdaptationTimeline events={plan.adaptationEvents} onSelect={setSelectedEvent} />
         </div>
       )}
 
@@ -490,6 +656,14 @@ export default function PlanDetailPage() {
           </p>
           <VersionHistory versions={plan.versions} />
         </div>
+      )}
+
+      {selectedEvent && (
+        <WhyThisChangedSheet
+          event={selectedEvent}
+          plan={plan}
+          onClose={() => setSelectedEvent(null)}
+        />
       )}
     </>
   );
