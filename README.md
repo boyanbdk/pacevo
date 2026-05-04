@@ -23,6 +23,11 @@ npm run build     # production build
 npm audit --omit=dev
 ```
 
+### Planning Docs
+
+- Canonical execution plan: `plans/adaptive-workout-generation/coach-plan-rebuild.md`
+- Legacy reference plan: `plans/adaptive-workout-generation/implementation-plan.md`
+
 ### What the app includes
 
 #### Workout tailoring

@@ -1,5 +1,13 @@
 # Adaptive Workout Generation Implementation Plan
 
+## Status
+
+This is now a legacy reference plan.
+
+Use `plans/adaptive-workout-generation/coach-plan-rebuild.md` as the canonical execution plan. The original recipe, preference, swap, adaptation, and dashboard work in this file remains useful background, but its phase order has been superseded by the May 4, 2026 product and engineering review.
+
+Reason: the current app already implements much of this plan, while newer core issues around mileage progression, date visibility, user-facing source copy, race-estimate input, intensity defaults, and the New Workout versus Tailoring split need to be fixed before continuing with legacy polish.
+
 ## Purpose
 
 Move Run Tailor from a plan builder that mostly assembles fixed workout descriptions into a real workout-generation engine.
