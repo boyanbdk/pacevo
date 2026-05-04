@@ -4,11 +4,11 @@ import { Archive, ArrowLeft, ChevronRight, Download, FileImage, FileText, FileUp
 import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { formatPace } from "@/domain/training-plan";
 import { runAdaptations } from "@/domain/training-plan/adapt-plan";
 import { matchImportedActivities, parseActivityFile, type ActivityMatch, type ImportedActivity } from "@/domain/training-plan/activity-import";
 import { splitPlanWarnings } from "@/domain/training-plan/warnings";
 import type { TrainingWeek } from "@/domain/training-plan/types";
+import { planSettingsSummary } from "@/lib/plan-display";
 import { formatShortPlanDate, formatWeekRange, formatWeekdayDate, parsePlanDate } from "@/lib/plan-dates";
 import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
 import { applyAdaptation, getPlan, getWorkoutPreferences, logSession, updatePlanStatus } from "@/lib/plan-storage";
@@ -97,12 +97,6 @@ function countLoggedSessions(sessions: CompletedSession[], weekIndex?: number): 
     keys.add(`${session.weekIndex}-${session.dayIndex}`);
   }
   return keys.size;
-}
-
-function settingPaceLabel(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return "—";
-  return trimmed.includes("/") ? trimmed : `${trimmed} /km`;
 }
 
 function currentWeekIndexForPlan(plan: SavedPlan): number {
@@ -533,6 +527,7 @@ function PlanSummary({ plan, settings }: { plan: SavedPlan; settings: UserSettin
   const { meta, paces, weeks } = plan.plan;
   const totalKm = weeks.reduce((s, w) => s + w.total_km, 0);
   const loggedCount = countLoggedSessions(plan.completedSessions);
+  const paceSummary = planSettingsSummary(settings, paces);
   return (
     <div className="grid-3" style={{ marginBottom: 18 }}>
       <div className="panel">
@@ -551,13 +546,9 @@ function PlanSummary({ plan, settings }: { plan: SavedPlan; settings: UserSettin
       </div>
       <div className="panel">
         <span className="muted">Settings</span>
-        <h2>{settingPaceLabel(settings.defaultEasyPace)}</h2>
+        <h2>{paceSummary.headline}</h2>
         <span className="muted" style={{ fontSize: 13 }}>
-          Easy setting
-          {settings.defaultCooldownPace.trim()
-            ? ` · ${settingPaceLabel(settings.defaultCooldownPace)} recovery setting`
-            : ""}
-          {paces.T ? ` · ${formatPace(paces.T)} tempo` : ""}
+          {paceSummary.details}
         </span>
       </div>
     </div>

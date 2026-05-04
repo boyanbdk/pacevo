@@ -12,11 +12,11 @@ import {
 } from "docx";
 import { toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
-import { groupAdjustedSteps } from "@/domain/run-tailor";
-import type { AdjustedWorkout, UserSettings } from "@/domain/workout-schema";
-import type { AdjustedStepGroup } from "@/domain/workout-schema";
-import type { PlannedSession, TrainingPlan } from "@/domain/training-plan/types";
-import { formatPlanDate, formatWeekRange, formatWeekdayDate } from "@/lib/plan-dates";
+import { groupAdjustedSteps } from "../domain/run-tailor";
+import type { AdjustedWorkout, UserSettings } from "../domain/workout-schema";
+import type { AdjustedStepGroup } from "../domain/workout-schema";
+import type { PlannedSession, TrainingPlan } from "../domain/training-plan/types";
+import { formatPlanDate, formatWeekRange, formatWeekdayDate } from "./plan-dates";
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -159,7 +159,7 @@ function fmtSettingPace(value: string | undefined): string | null {
   return trimmed.includes("/") ? trimmed : `${trimmed}/km`;
 }
 
-function planPaceReference(plan: TrainingPlan, options?: PlanExportOptions): string {
+export function planPaceReference(plan: TrainingPlan, options?: PlanExportOptions): string {
   return [
     fmtSettingPace(options?.defaultEasyPace) ? `Easy setting: ${fmtSettingPace(options?.defaultEasyPace)}` : null,
     fmtSettingPace(options?.defaultCooldownPace) ? `Recovery setting: ${fmtSettingPace(options?.defaultCooldownPace)}` : null,
@@ -169,7 +169,7 @@ function planPaceReference(plan: TrainingPlan, options?: PlanExportOptions): str
   ].filter(Boolean).join("   ·   ");
 }
 
-function sessionPaceForExport(session: PlannedSession, options?: PlanExportOptions): string {
+export function sessionPaceForExport(session: PlannedSession, options?: PlanExportOptions): string {
   if (EASY_PACE_OPTIONAL_TYPES.has(session.type)) {
     if (options?.showEasyRunPaceTargets !== true) return "";
     const setting = session.type === "recovery" ? options.defaultCooldownPace : options.defaultEasyPace;

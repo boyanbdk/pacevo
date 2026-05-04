@@ -16,11 +16,12 @@ import {
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { formatPace, renderIntensity } from "@/domain/training-plan";
+import { renderIntensity } from "@/domain/training-plan";
 import { runAdaptations } from "@/domain/training-plan/adapt-plan";
 import { findSimilarWorkouts, type SimilarWorkoutOption } from "@/domain/training-plan/find-similar-workouts";
 import type { IntensityMode, PlannedSession, TrainingWeek } from "@/domain/training-plan/types";
 import type { WorkoutFeedbackReason, WorkoutFeedbackType } from "@/domain/training-plan/workout-preferences";
+import { sessionPaceReferenceItems } from "@/lib/plan-display";
 import { formatFullPlanDate, parsePlanDate } from "@/lib/plan-dates";
 import type { CompletedSession, SavedPlan } from "@/lib/plan-storage";
 import type { UserSettings } from "@/domain/workout-schema";
@@ -89,14 +90,6 @@ const DISLIKE_REASONS: { value: WorkoutFeedbackReason; label: string }[] = [
   { value: "schedule_fit", label: "Did not fit schedule" },
   { value: "other", label: "Other" },
 ];
-
-const EASY_PACE_OPTIONAL_TYPES = new Set(["easy", "recovery"]);
-
-function settingPaceLabel(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  return trimmed.includes("/") ? trimmed : `${trimmed} /km`;
-}
 
 // ---------------------------------------------------------------------------
 // Log form
@@ -554,23 +547,7 @@ export default function SessionDetailPage() {
         },
       )
     : null;
-  const paceReferenceItems = [
-    showEasyRunPaceTargets && settingPaceLabel(settings.defaultEasyPace)
-      ? { label: "Easy setting", value: settingPaceLabel(settings.defaultEasyPace) }
-      : null,
-    showEasyRunPaceTargets && settingPaceLabel(settings.defaultCooldownPace)
-      ? { label: "Recovery setting", value: settingPaceLabel(settings.defaultCooldownPace) }
-      : null,
-    !EASY_PACE_OPTIONAL_TYPES.has(session.type) && paces.M
-      ? { label: "Marathon pace", value: formatPace(paces.M) }
-      : null,
-    !EASY_PACE_OPTIONAL_TYPES.has(session.type) && paces.T
-      ? { label: "Threshold", value: formatPace(paces.T) }
-      : null,
-    !EASY_PACE_OPTIONAL_TYPES.has(session.type) && paces.I
-      ? { label: "Interval", value: formatPace(paces.I) }
-      : null,
-  ].filter((item): item is { label: string; value: string } => item !== null);
+  const paceReferenceItems = sessionPaceReferenceItems(session.type, paces, settings, showEasyRunPaceTargets);
 
   return (
     <>
