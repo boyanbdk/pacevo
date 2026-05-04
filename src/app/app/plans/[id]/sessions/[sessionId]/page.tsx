@@ -18,11 +18,13 @@ import { notFound, useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { formatPace, renderIntensity } from "@/domain/training-plan";
 import { runAdaptations } from "@/domain/training-plan/adapt-plan";
+import { findSimilarWorkouts, type SimilarWorkoutOption } from "@/domain/training-plan/find-similar-workouts";
 import type { IntensityMode, PlannedSession, TrainingWeek } from "@/domain/training-plan/types";
 import type { WorkoutFeedbackReason, WorkoutFeedbackType } from "@/domain/training-plan/workout-preferences";
 import type { CompletedSession, SavedPlan } from "@/lib/plan-storage";
 import {
   applyAdaptation,
+  applyWorkoutSwap,
   getCompletedSession,
   getPlan,
   getWorkoutFeedbackForSession,
@@ -310,15 +312,22 @@ function ModeSwitcher({
 function FeedbackControls({
   planId,
   sessionId,
+  plan,
   session,
+  weekIndex,
+  dayIndex,
   onSaved,
 }: {
   planId: string;
   sessionId: string;
+  plan: SavedPlan;
   session: PlannedSession;
+  weekIndex: number;
+  dayIndex: number;
   onSaved: (updated: SavedPlan) => void;
 }) {
   const [selectedReason, setSelectedReason] = useState<WorkoutFeedbackReason>("too_hard");
+  const [swapOptions, setSwapOptions] = useState<SimilarWorkoutOption[] | null>(null);
   const latestFeedback = getWorkoutFeedbackForSession(planId, sessionId);
   const latestType = latestFeedback?.type;
   const canRecord = Boolean(session.recipe_id && session.recipe_family);
@@ -327,6 +336,22 @@ function FeedbackControls({
     recordWorkoutFeedback(planId, sessionId, session, type, reason);
     const refreshed = getPlan(planId);
     if (refreshed) onSaved(refreshed);
+  }
+
+  function showSwapOptions() {
+    const options = findSimilarWorkouts(
+      plan.plan,
+      weekIndex,
+      session,
+      plan.inputs.days_per_week,
+    );
+    setSwapOptions(options);
+  }
+
+  function applySwap(option: SimilarWorkoutOption) {
+    const updated = applyWorkoutSwap(planId, weekIndex, dayIndex, sessionId, option.session);
+    onSaved(updated);
+    setSwapOptions(null);
   }
 
   if (session.type === "rest") return null;
@@ -392,11 +417,46 @@ function FeedbackControls({
           <ThumbsDown size={16} />
           Dislike
         </button>
-        <button type="button" className="button ghost" disabled title="Similar workout swaps are Phase 6.">
+        <button
+          type="button"
+          className="button ghost"
+          disabled={!canRecord}
+          onClick={showSwapOptions}
+        >
           <RefreshCw size={16} />
           Switch similar
         </button>
       </div>
+
+      {swapOptions && (
+        <div style={{ marginTop: 14 }}>
+          {swapOptions.length === 0 ? (
+            <div className="plan-warn">
+              <AlertCircle size={15} />
+              <span>No safe swap is available this week because this session is protecting the plan structure.</span>
+            </div>
+          ) : (
+            <div className="swap-option-list">
+              {swapOptions.map((option) => (
+                <button
+                  key={option.recipe.id}
+                  type="button"
+                  className="swap-option"
+                  onClick={() => applySwap(option)}
+                >
+                  <span>
+                    <strong>{option.session.description}</strong>
+                    <span className="muted">{option.session.main_set}</span>
+                  </span>
+                  <span className="tag">
+                    {option.loadDeltaPct > 0 ? "+" : ""}{option.loadDeltaPct}% load
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -574,7 +634,10 @@ export default function SessionDetailPage() {
       <FeedbackControls
         planId={id}
         sessionId={sessionId}
+        plan={plan}
         session={session}
+        weekIndex={weekIndex}
+        dayIndex={dayIndex}
         onSaved={setPlan}
       />
 

@@ -48,10 +48,13 @@ export type AdaptationEvent = {
 
 export type PlanVersion = {
   versionIndex: number;
-  reason: "initial" | "adaptation" | "user_edit";
+  reason: "initial" | "adaptation" | "user_edit" | "swap";
   plan: TrainingPlan;
   createdAt: string;
   adaptationRule?: AdaptationRule;
+  swapSessionId?: string;
+  swapFromRecipeId?: string;
+  swapToRecipeId?: string;
 };
 
 export type SavedPlan = {
@@ -229,6 +232,65 @@ export function getWorkoutFeedbackForSession(
 export function getWorkoutPreferences(planId: string): UserWorkoutPreference[] {
   const plan = getPlan(planId);
   return calculateWorkoutPreferences(plan?.workoutFeedback ?? []);
+}
+
+export function applyWorkoutSwap(
+  planId: string,
+  weekIndex: number,
+  dayIndex: number,
+  sessionId: string,
+  nextSession: PlannedSession,
+): SavedPlan {
+  const plan = getPlan(planId);
+  if (!plan) throw new Error(`Plan ${planId} not found`);
+
+  const currentSession = plan.plan.weeks[weekIndex]?.sessions.find((s) => s.day_index === dayIndex);
+  if (!currentSession) throw new Error(`Session ${sessionId} not found`);
+
+  const now = new Date().toISOString();
+  const newPlanData: TrainingPlan = {
+    ...plan.plan,
+    weeks: plan.plan.weeks.map((week, idx) => idx === weekIndex
+      ? {
+          ...week,
+          sessions: week.sessions.map((session) => session.day_index === dayIndex ? nextSession : session),
+        }
+      : week),
+  };
+  const versionIndex = plan.versions.length;
+  const newVersion: PlanVersion = {
+    versionIndex,
+    reason: "swap",
+    plan: newPlanData,
+    createdAt: now,
+    swapSessionId: sessionId,
+    swapFromRecipeId: currentSession.recipe_id ?? undefined,
+    swapToRecipeId: nextSession.recipe_id ?? undefined,
+  };
+  const swapFeedback = currentSession.recipe_id && currentSession.recipe_family
+    ? {
+        id: crypto.randomUUID(),
+        planId,
+        sessionId,
+        recipeId: currentSession.recipe_id,
+        recipeFamily: currentSession.recipe_family,
+        type: "swap" as const,
+        createdAt: now,
+      }
+    : null;
+
+  const updated: SavedPlan = {
+    ...plan,
+    plan: newPlanData,
+    versions: [...plan.versions, newVersion],
+    workoutFeedback: swapFeedback
+      ? [...plan.workoutFeedback, swapFeedback]
+      : plan.workoutFeedback,
+    updatedAt: now,
+  };
+
+  savePlan(updated);
+  return updated;
 }
 
 // ---------------------------------------------------------------------------

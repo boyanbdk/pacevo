@@ -245,6 +245,31 @@ button {
   cursor: not-allowed;
 }
 
+.swap-option-list {
+  display: grid;
+  gap: 10px;
+}
+
+.swap-option {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+}
+
+.swap-option > span:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
 .app-layout {
   min-height: 100vh;
   display: grid;

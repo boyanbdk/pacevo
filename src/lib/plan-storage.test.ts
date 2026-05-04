@@ -7,6 +7,7 @@ import {
   getPlan,
   getWorkoutFeedbackForSession,
   getWorkoutPreferences,
+  applyWorkoutSwap,
   logSession,
   recordWorkoutFeedback,
   savePlan,
@@ -108,4 +109,31 @@ test("recordWorkoutFeedback persists event and updates derived preferences", () 
   expect(preferences).toHaveLength(1);
   expect(preferences[0].recipeId).toBe(session!.recipe_id);
   expect(preferences[0].score).toBe(2);
+});
+
+test("applyWorkoutSwap creates a new version and records swap feedback", () => {
+  const plan = createPlan(INPUTS, buildPlan(INPUTS));
+  savePlan(plan);
+
+  const weekIndex = plan.plan.weeks.findIndex((week) =>
+    week.sessions.some((session) => session.recipe_id && session.recipe_family && session.type !== "rest"),
+  );
+  const session = plan.plan.weeks[weekIndex].sessions.find(
+    (candidate) => candidate.recipe_id && candidate.recipe_family && candidate.type !== "rest",
+  )!;
+  const nextSession = {
+    ...session,
+    recipe_id: `${session.recipe_id}_swap`,
+    main_set: "Swapped similar workout",
+  };
+
+  const updated = applyWorkoutSwap(plan.id, weekIndex, session.day_index, `${weekIndex}-${session.day_index}`, nextSession);
+
+  expect(updated.versions).toHaveLength(2);
+  expect(updated.versions.at(-1)?.reason).toBe("swap");
+  expect(updated.versions.at(-1)?.swapFromRecipeId).toBe(session.recipe_id);
+  expect(updated.versions.at(-1)?.swapToRecipeId).toBe(nextSession.recipe_id);
+  expect(updated.plan.weeks[weekIndex].sessions.find((s) => s.day_index === session.day_index)?.main_set)
+    .toBe("Swapped similar workout");
+  expect(updated.workoutFeedback.at(-1)?.type).toBe("swap");
 });
