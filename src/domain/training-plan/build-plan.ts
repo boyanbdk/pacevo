@@ -567,7 +567,7 @@ function validatePlan(weeks: TrainingWeek[], volumes: number[]): string[] {
       const lrPct = long_run_km / total_km;
       if (lrPct > 0.34) {
         warnings.push(
-          `Week ${week_index}: long run ${long_run_km.toFixed(1)} km is ${Math.round(lrPct * 100)}% of weekly volume. Cap is 33%.`
+          `Week ${week_index}: long run is ${Math.round(lrPct * 100)}% of weekly volume. Shorten it or add easy distance elsewhere so the week is less dependent on one run.`
         );
       }
     }
@@ -579,7 +579,7 @@ function validatePlan(weeks: TrainingWeek[], volumes: number[]): string[] {
     if (phase !== "taper") {
       deloadGap = is_deload ? 0 : deloadGap + 1;
       if (deloadGap > 5) {
-        warnings.push(`Week ${week_index}: ${deloadGap} consecutive load weeks without a deload.`);
+        warnings.push(`Week ${week_index}: ${deloadGap} consecutive load weeks without a cutback. Keep this week conservative or move an easy run to rest.`);
       }
     }
   }

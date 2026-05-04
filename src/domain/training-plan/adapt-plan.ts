@@ -135,7 +135,7 @@ export function checkAcwrCap(
 
   return {
     rule: "ACWR_CAP",
-    explanation: `Week ${targetWeekIndex + 1} load (${acute.toFixed(0)} km) would push ACWR to ${acwr.toFixed(2)}. Scaled to ${maxAllowedKm} km to stay within 1.3.`,
+    explanation: `Week ${targetWeekIndex + 1} jumps too far above your recent training. Reduced it from ${acute.toFixed(0)} km to ${maxAllowedKm} km so the build stays controlled.`,
     triggeredBySessionIds: [],
     newPlan: { ...plan, weeks },
   };

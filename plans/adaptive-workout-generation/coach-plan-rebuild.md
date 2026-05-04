@@ -179,6 +179,8 @@ Verification added:
 
 ### Phase 3: User-Facing Copy Cleanup
 
+Status: implemented on May 4, 2026.
+
 Goal: remove academic/debug copy from the primary product surface.
 
 Tasks:
@@ -201,6 +203,12 @@ Likely files:
 - `src/domain/training-plan/build-plan.ts`
 - `src/app/app/plans/[id]/page.tsx`
 - `src/app/app/plans/[id]/sessions/[sessionId]/page.tsx`
+
+Verification added:
+
+- `src/domain/training-plan/workout-recipes.test.ts` blocks source citations and named training sources from generated recipe rationales.
+- `src/domain/training-plan/adapt-plan.test.ts` blocks ACWR/source jargon in the load-cap adaptation explanation.
+- `npm test` and `npm run build` passed after implementation.
 
 ### Phase 4: Intensity Defaults And Recovery Naming
 

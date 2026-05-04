@@ -61,6 +61,11 @@ describe("recipe registry", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  test("generated recipe rationales are plain coaching copy", () => {
+    const rationales = WORKOUT_RECIPES.map((recipe) => recipe.build(makeCtx()).rationale).join("\n");
+    expect(rationales).not.toMatch(/Source:|Daniels|Pfitzinger|Seiler|Hudson|Magness|Higdon/i);
+  });
+
   test("getRecipeById returns correct recipe", () => {
     const r = getRecipeById("easy_run");
     expect(r).toBeDefined();

@@ -235,6 +235,8 @@ test("ACWR_CAP fires when projected ACWR exceeds 1.3", () => {
   if (result) {
     expect(result.rule).toBe("ACWR_CAP");
     expect(result.explanation.length).toBeLessThan(200);
+    expect(result.explanation).toContain("Reduced it from");
+    expect(result.explanation).not.toMatch(/ACWR|1\.3|Source:/);
 
     // Capped week should have reduced volume
     const cappedKm = result.newPlan.weeks[4]?.total_km;
