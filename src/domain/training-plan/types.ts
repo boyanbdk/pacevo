@@ -125,3 +125,70 @@ export interface TrainingPlan {
   weeks: TrainingWeek[];
   warnings: string[];
 }
+
+// ---------------------------------------------------------------------------
+// Workout Recipe types (Phase 3)
+// ---------------------------------------------------------------------------
+
+export type WorkoutFamily =
+  | "recovery"
+  | "recovery_strides"
+  | "easy"
+  | "easy_strides"
+  | "easy_progression"
+  | "long_easy"
+  | "long_fast_finish"
+  | "long_steady_middle"
+  | "long_tempo_blocks"
+  | "long_mp_segment"
+  | "cutback_long"
+  | "tempo_continuous"
+  | "tempo_cruise"
+  | "tempo_progression"
+  | "tempo_ladder"
+  | "tempo_race_pace"
+  | "interval_short"
+  | "interval_medium"
+  | "interval_long"
+  | "interval_vo2"
+  | "hills"
+  | "fartlek";
+
+export type RecipeStimulus =
+  | "recovery"
+  | "aerobic"
+  | "threshold"
+  | "vo2max"
+  | "speed"
+  | "race_specific";
+
+export type RecipeSessionType = "recovery" | "easy" | "long" | "tempo" | "interval";
+
+export interface WorkoutContext {
+  dayIndex: number;
+  date: Date;
+  targetKm: number;
+  paces: Paces;
+  level: Level;
+  phase: Phase;
+  goalRace: GoalRace;
+  weeklyKm: number;
+  weekIndex: number;
+}
+
+export interface WorkoutRecipe {
+  id: string;
+  family: WorkoutFamily;
+  sessionType: RecipeSessionType;
+  goalRaces: GoalRace[];
+  levels: Level[];
+  phases: Phase[];
+  minWeeklyKm: number;
+  maxWeeklyKm?: number;
+  minDaysPerWeek: number;
+  stressScore: 1 | 2 | 3 | 4 | 5;
+  stimulus: RecipeStimulus;
+  tags: string[];
+  cooldownWeeks: number;
+  build: (ctx: WorkoutContext) => PlannedSession;
+}
