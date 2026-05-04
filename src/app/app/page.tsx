@@ -15,247 +15,32 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { calculateWorkoutPreferences } from "@/domain/training-plan";
-import type { PlannedSession, TrainingWeek } from "@/domain/training-plan";
 import type { SavedWorkout } from "@/domain/workout-schema";
-import type { CompletedSession, SavedPlan } from "@/lib/plan-storage";
+import type { SavedPlan } from "@/lib/plan-storage";
 import { getPlans } from "@/lib/plan-storage";
 import { getWorkouts } from "@/lib/storage";
-
-const GOAL_LABELS: Record<string, string> = {
-  "5K": "5K",
-  "10K": "10K",
-  half: "Half marathon",
-  marathon: "Marathon",
-};
-
-const PHASE_LABELS: Record<string, string> = {
-  base: "Base",
-  build: "Build",
-  peak: "Peak",
-  taper: "Taper",
-};
-
-const SESSION_LABELS: Record<string, string> = {
-  easy: "Easy",
-  long: "Long",
-  tempo: "Tempo",
-  interval: "Intervals",
-  repetition: "Reps",
-  marathon_pace: "Marathon pace",
-  recovery: "Recovery",
-  strides: "Strides",
-  fartlek: "Fartlek",
-  hills: "Hills",
-  cross: "Cross",
-  rest: "Rest",
-};
-
-const RULE_LABELS: Record<string, string> = {
-  ACWR_CAP: "Load cap",
-  RHR_ELEVATED: "Resting HR elevated",
-  AEROBIC_DEFICIT: "Aerobic deficit",
-  MISSED_SESSION: "Missed session",
-  VDOT_UPDATE: "Fitness update",
-  INJURY_FLAG: "Injury flag",
-  PREFERENCE_REPLAN: "Preference replan",
-};
-
-const DAY_ABBRS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-type SessionPointer = {
-  weekIndex: number;
-  week: TrainingWeek;
-  session: PlannedSession;
-};
-
-type ActivityItem = {
-  id: string;
-  createdAt: string;
-  label: string;
-  detail: string;
-  href?: string;
-};
-
-function dayLabel(dayIndex: number): string {
-  return DAY_ABBRS[dayIndex - 1] ?? "Day";
-}
-
-function dateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function startOfToday(): Date {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return today;
-}
-
-function formatDate(value: string): string {
-  return parseDate(value).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-function parseDate(value: string): Date {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return new Date(value);
-  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-}
-
-function weeksRemaining(plan: SavedPlan): number {
-  const goal = new Date(plan.plan.meta.goal_date);
-  const today = new Date();
-  return Math.max(0, Math.ceil((goal.getTime() - today.getTime()) / (7 * 86400000)));
-}
-
-function currentWeekIndex(plan: SavedPlan): number {
-  const today = new Date();
-  const start = new Date(plan.plan.meta.start_date);
-  return Math.min(
-    Math.max(0, Math.floor((today.getTime() - start.getTime()) / (7 * 86400000))),
-    plan.plan.weeks.length - 1,
-  );
-}
-
-function plannedRunSessions(week: TrainingWeek): PlannedSession[] {
-  return week.sessions.filter((session) => session.type !== "rest");
-}
-
-function sessionKey(weekIndex: number, dayIndex: number): string {
-  return `${weekIndex}-${dayIndex}`;
-}
-
-function completedKeys(sessions: CompletedSession[], weekIndex?: number): Set<string> {
-  return new Set(
-    sessions
-      .filter((session) => weekIndex === undefined || session.weekIndex === weekIndex)
-      .map((session) => sessionKey(session.weekIndex, session.dayIndex)),
-  );
-}
-
-function completedKmForWeek(plan: SavedPlan, weekIndex: number): number {
-  return plan.completedSessions
-    .filter((session) => session.weekIndex === weekIndex)
-    .reduce((sum, session) => sum + (session.actualKm ?? 0), 0);
-}
-
-function allRunPointers(plan: SavedPlan): SessionPointer[] {
-  return plan.plan.weeks.flatMap((week, index) =>
-    plannedRunSessions(week).map((session) => ({
-      weekIndex: index,
-      week,
-      session,
-    })),
-  );
-}
-
-function nextRun(plan: SavedPlan): SessionPointer | null {
-  const today = startOfToday();
-  const logged = completedKeys(plan.completedSessions);
-  return allRunPointers(plan).find(({ weekIndex, session }) => {
-    const sessionDate = parseDate(session.date);
-    sessionDate.setHours(0, 0, 0, 0);
-    return sessionDate >= today && !logged.has(sessionKey(weekIndex, session.day_index));
-  }) ?? null;
-}
-
-function nextLongRun(plan: SavedPlan, fromWeekIndex: number): SessionPointer | null {
-  const today = startOfToday();
-  return allRunPointers(plan).find(({ weekIndex, session }) => {
-    const sessionDate = parseDate(session.date);
-    sessionDate.setHours(0, 0, 0, 0);
-    return weekIndex >= fromWeekIndex && sessionDate >= today && session.type === "long";
-  }) ?? null;
-}
-
-function planStatus(plan: SavedPlan, weekIndex: number): { label: string; tone: "ok" | "warn" | "info"; detail: string } {
-  const week = plan.plan.weeks[weekIndex];
-  const today = startOfToday();
-  const logged = completedKeys(plan.completedSessions, weekIndex);
-  const missed = plannedRunSessions(week).filter((session) => {
-    const sessionDate = parseDate(session.date);
-    sessionDate.setHours(0, 0, 0, 0);
-    return sessionDate < today && !logged.has(sessionKey(weekIndex, session.day_index));
-  });
-  if (missed.length > 0) {
-    return {
-      label: "Needs attention",
-      tone: "warn",
-      detail: `${missed.length} planned session${missed.length === 1 ? "" : "s"} behind this week`,
-    };
-  }
-
-  const weekStart = parseDate(week.sessions[0]?.date ?? plan.plan.meta.start_date);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 7);
-  const adaptedThisWeek = plan.adaptationEvents.some((event) => {
-    const fired = new Date(event.firedAt);
-    return fired >= weekStart && fired < weekEnd;
-  });
-  if (adaptedThisWeek) {
-    return { label: "Adapted this week", tone: "info", detail: "Plan changed after recent training data" };
-  }
-
-  return { label: "On track", tone: "ok", detail: "No missed sessions requiring action" };
-}
-
-function preferenceSignal(plan: SavedPlan): string {
-  const preferences = calculateWorkoutPreferences(plan.workoutFeedback)
-    .filter((preference) => preference.score > 0)
-    .sort((a, b) => b.score - a.score || b.favourites - a.favourites);
-  const top = preferences[0];
-  if (!top) return "No preferences learned yet";
-  return top.recipeFamily.replaceAll("_", " ");
-}
-
-function latestFeedbackNeeded(plan: SavedPlan): CompletedSession | null {
-  const latest = [...plan.completedSessions].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-  if (!latest) return null;
-  const id = sessionKey(latest.weekIndex, latest.dayIndex);
-  return plan.workoutFeedback.some((event) => event.sessionId === id) ? null : latest;
-}
-
-function recentActivity(plan: SavedPlan, workouts: SavedWorkout[]): ActivityItem[] {
-  const logs = plan.completedSessions.map((session) => ({
-    id: `log-${session.id}`,
-    createdAt: session.createdAt,
-    label: session.source === "file_import" ? "Imported run" : "Logged run",
-    detail: `${formatDate(session.date)} · ${session.actualKm ? `${session.actualKm.toFixed(1)} km` : "distance not set"}`,
-    href: `/app/plans/${plan.id}/sessions/${session.weekIndex}-${session.dayIndex}`,
-  }));
-
-  const adaptations = plan.adaptationEvents.map((event) => ({
-    id: `adapt-${event.id}`,
-    createdAt: event.firedAt,
-    label: RULE_LABELS[event.rule] ?? event.rule,
-    detail: event.explanation,
-    href: `/app/plans/${plan.id}`,
-  }));
-
-  const swaps = plan.versions
-    .filter((version) => version.reason === "swap")
-    .map((version) => ({
-      id: `swap-${version.versionIndex}`,
-      createdAt: version.createdAt,
-      label: "Workout swapped",
-      detail: `${version.swapFromRecipeId ?? "Previous recipe"} to ${version.swapToRecipeId ?? "new recipe"}`,
-      href: version.swapSessionId ? `/app/plans/${plan.id}/sessions/${version.swapSessionId}` : `/app/plans/${plan.id}`,
-    }));
-
-  const oneOffs = workouts.slice(0, 2).map((workout) => ({
-    id: `workout-${workout.id}`,
-    createdAt: workout.updatedAt,
-    label: "One-off workout",
-    detail: workout.title,
-    href: `/app/workouts/${workout.id}`,
-  }));
-
-  return [...logs, ...adaptations, ...swaps, ...oneOffs]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 6);
-}
+import {
+  GOAL_LABELS,
+  PHASE_LABELS,
+  SESSION_LABELS,
+  RULE_LABELS,
+  completedKeys,
+  completedKmForWeek,
+  currentWeekIndex,
+  dateKey,
+  dayLabel,
+  formatDate,
+  latestFeedbackNeeded,
+  nextLongRun,
+  nextRun,
+  planStatus,
+  plannedRunSessions,
+  preferenceSignal,
+  recentActivity,
+  sessionKey,
+  startOfToday,
+  weeksRemaining,
+} from "@/lib/training-dashboard";
 
 function EmptyDashboard({ workoutsCount }: { workoutsCount: number }) {
   return (
