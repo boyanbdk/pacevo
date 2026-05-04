@@ -460,6 +460,12 @@ button {
   margin-bottom: 18px;
 }
 
+.workout-card-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin: -6px 0 14px;
+}
+
 .workout-card h2 {
   font-size: 28px;
   line-height: 1.05;
@@ -495,6 +501,11 @@ button {
   grid-template-columns: 34px minmax(0, 1fr);
   gap: 10px;
   padding: 12px;
+}
+
+.repeat-step-row {
+  border-color: rgba(201, 255, 64, 0.24);
+  background: rgba(201, 255, 64, 0.055);
 }
 
 .step-index {

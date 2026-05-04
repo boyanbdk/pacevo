@@ -3,6 +3,7 @@
 import { Save } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { groupAdjustedSteps } from "@/domain/run-tailor";
 import { WORKOUT_RECIPES } from "@/domain/training-plan/workout-recipes";
 import { pacesFromVdot } from "@/domain/training-plan/vdot";
 import type { Level, PlannedSession, RecipeSessionType, WorkoutContext } from "@/domain/training-plan/types";
@@ -148,6 +149,7 @@ function sessionToAdjustedWorkout(session: PlannedSession): AdjustedWorkout {
     inputs: stubInputs,
     summary: session.rationale,
     steps,
+    stepGroups: groupAdjustedSteps(steps),
     notes,
     generatedAt: new Date().toISOString(),
   };

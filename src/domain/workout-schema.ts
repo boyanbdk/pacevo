@@ -49,12 +49,28 @@ export type AdjustedStep = {
   repeatIndex?: number;
 };
 
+export type AdjustedStepGroup =
+  | {
+      id: string;
+      type: "single";
+      step: AdjustedStep;
+    }
+  | {
+      id: string;
+      type: "repeat";
+      reps: number;
+      run: AdjustedStep;
+      runs: AdjustedStep[];
+      rest: AdjustedStep;
+    };
+
 export type AdjustedWorkout = {
   title: string;
   lane: string;
   inputs: TailoringInputs;
   summary: string;
   steps: AdjustedStep[];
+  stepGroups: AdjustedStepGroup[];
   notes: string[];
   generatedAt: string;
 };

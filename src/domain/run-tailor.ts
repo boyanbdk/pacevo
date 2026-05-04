@@ -10,6 +10,7 @@ import {
 import { adjustedPush, feedbackAdjustedPush } from "./readiness";
 import type {
   AdjustedStep,
+  AdjustedStepGroup,
   AdjustedWorkout,
   ParsedWorkout,
   TailoringInputs,
@@ -105,9 +106,122 @@ export function tailorWorkout(
     inputs: effectiveInputs,
     summary: `${steps.length} execution steps for ${formatRunContext(inputs.runContext)}.`,
     steps,
+    stepGroups: groupAdjustedSteps(steps),
     notes,
     generatedAt: new Date().toISOString()
   };
+}
+
+export function groupAdjustedSteps(steps: AdjustedStep[]): AdjustedStepGroup[] {
+  const groups: AdjustedStepGroup[] = [];
+  let i = 0;
+
+  while (i < steps.length) {
+    const repeat = collectRepeatGroup(steps, i);
+    if (repeat) {
+      groups.push(repeat.group);
+      i = repeat.nextIndex;
+      continue;
+    }
+
+    const step = steps[i];
+    groups.push({ id: `single-${step.id}`, type: "single", step });
+    i++;
+  }
+
+  return groups;
+}
+
+function collectRepeatGroup(
+  steps: AdjustedStep[],
+  startIndex: number,
+): { group: AdjustedStepGroup; nextIndex: number } | null {
+  const firstRun = steps[startIndex];
+  const firstRest = steps[startIndex + 1];
+  const nextRun = steps[startIndex + 2];
+  if (!isIntervalRun(firstRun) || !isRecovery(firstRest) || !isIntervalRun(nextRun)) {
+    return null;
+  }
+
+  const restSig = recoverySignature(firstRest);
+  const runs: AdjustedStep[] = [];
+  let index = startIndex;
+
+  while (index < steps.length) {
+    const run = steps[index];
+    if (!isIntervalRun(run) || !compatibleIntervalRun(firstRun, run)) break;
+    runs.push(run);
+
+    const rest = steps[index + 1];
+    const followingRun = steps[index + 2];
+    if (!isRecovery(rest) || recoverySignature(rest) !== restSig) {
+      index += 1;
+      break;
+    }
+    if (!isIntervalRun(followingRun) || !compatibleIntervalRun(firstRun, followingRun)) {
+      index += 1;
+      break;
+    }
+    index += 2;
+  }
+
+  if (runs.length < 2) return null;
+
+  return {
+    group: {
+      id: `repeat-${firstRun.id}`,
+      type: "repeat",
+      reps: runs.length,
+      run: firstRun,
+      runs,
+      rest: firstRest,
+    },
+    nextIndex: index,
+  };
+}
+
+function isIntervalRun(step: AdjustedStep | undefined): step is AdjustedStep {
+  return step?.kind === "Interval";
+}
+
+function isRecovery(step: AdjustedStep | undefined): step is AdjustedStep {
+  return step?.kind === "Recovery";
+}
+
+function compatibleIntervalRun(first: AdjustedStep, next: AdjustedStep): boolean {
+  if (runSignature(first) === runSignature(next)) return true;
+  return first.repeatIndex !== undefined &&
+    next.repeatIndex !== undefined &&
+    intervalStructureSignature(first) === intervalStructureSignature(next);
+}
+
+function runSignature(step: AdjustedStep): string {
+  return [
+    step.kind,
+    step.target,
+    step.detail,
+    step.pace ?? "",
+    step.speedKmh ?? "",
+    step.durationSeconds ?? "",
+    step.distanceLabel ?? "",
+  ].join("|");
+}
+
+function intervalStructureSignature(step: AdjustedStep): string {
+  return [
+    step.kind,
+    step.distanceLabel ?? "",
+  ].join("|");
+}
+
+function recoverySignature(step: AdjustedStep): string {
+  return [
+    step.kind,
+    step.target,
+    step.detail,
+    step.speedKmh ?? "",
+    step.durationSeconds ?? "",
+  ].join("|");
 }
 
 function formatRunContext(value: TailoringInputs["runContext"]): string {
