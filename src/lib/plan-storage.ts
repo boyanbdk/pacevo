@@ -97,6 +97,12 @@ export function deletePlan(id: string) {
   localStorage.setItem(plansKey, JSON.stringify(getPlans().filter((p) => p.id !== id)));
 }
 
+export function updatePlanStatus(id: string, status: SavedPlan["status"]) {
+  const plan = getPlan(id);
+  if (!plan) return;
+  savePlan({ ...plan, status, updatedAt: new Date().toISOString() });
+}
+
 export function createPlan(inputs: PlanInputs, plan: TrainingPlan): SavedPlan {
   const now = new Date().toISOString();
   const initialVersion: PlanVersion = {

@@ -1,10 +1,10 @@
 "use client";
 
-import { CalendarRange, Plus } from "lucide-react";
+import { Archive, CalendarRange, Plus, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { SavedPlan } from "@/lib/plan-storage";
-import { getPlans } from "@/lib/plan-storage";
+import { getPlans, updatePlanStatus } from "@/lib/plan-storage";
 
 const GOAL_LABELS: Record<string, string> = {
   "5K": "5K",
@@ -29,12 +29,22 @@ function weeksRemaining(plan: SavedPlan): number {
 export default function PlansPage() {
   const [plans, setPlans] = useState<SavedPlan[]>([]);
 
-  useEffect(() => {
+  function refresh() {
     setPlans(getPlans());
+  }
+
+  useEffect(() => {
+    refresh();
   }, []);
 
-  const active = plans.filter((p) => p.status === "active");
-  const archived = plans.filter((p) => p.status !== "active");
+  function handleStatusToggle(plan: SavedPlan) {
+    const next: SavedPlan["status"] = plan.status === "archived" ? "active" : "archived";
+    updatePlanStatus(plan.id, next);
+    refresh();
+  }
+
+  const active = plans.filter((p) => p.status !== "archived");
+  const archived = plans.filter((p) => p.status === "archived");
 
   return (
     <>
@@ -68,7 +78,7 @@ export default function PlansPage() {
               <h2>Active</h2>
               <div className="saved-list">
                 {active.map((p) => (
-                  <PlanRow key={p.id} plan={p} weeksLeft={weeksRemaining(p)} />
+                  <PlanRow key={p.id} plan={p} weeksLeft={weeksRemaining(p)} onToggleArchive={() => handleStatusToggle(p)} />
                 ))}
               </div>
             </section>
@@ -78,7 +88,7 @@ export default function PlansPage() {
               <h2>Archived</h2>
               <div className="saved-list">
                 {archived.map((p) => (
-                  <PlanRow key={p.id} plan={p} weeksLeft={weeksRemaining(p)} />
+                  <PlanRow key={p.id} plan={p} weeksLeft={weeksRemaining(p)} onToggleArchive={() => handleStatusToggle(p)} />
                 ))}
               </div>
             </section>
@@ -89,21 +99,42 @@ export default function PlansPage() {
   );
 }
 
-function PlanRow({ plan, weeksLeft }: { plan: SavedPlan; weeksLeft: number }) {
+function PlanRow({
+  plan,
+  weeksLeft,
+  onToggleArchive,
+}: {
+  plan: SavedPlan;
+  weeksLeft: number;
+  onToggleArchive: () => void;
+}) {
   const { meta } = plan.plan;
+  const isArchived = plan.status === "archived";
   return (
-    <Link className="saved-item" href={`/app/plans/${plan.id}`}>
-      <div>
-        <strong>
-          {GOAL_LABELS[meta.goal_race]} · {new Date(meta.goal_date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-        </strong>
-        <div className="muted">
-          {meta.level} · {meta.weeks_total} weeks · {weeksLeft} weeks remaining
+    <div className="saved-item" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <Link
+        href={`/app/plans/${plan.id}`}
+        style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "inherit" }}
+      >
+        <div style={{ flex: 1 }}>
+          <strong>
+            {GOAL_LABELS[meta.goal_race]} · {new Date(meta.goal_date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+          </strong>
+          <div className="muted">
+            {meta.level} · {meta.weeks_total} weeks{isArchived ? "" : ` · ${weeksLeft} weeks remaining`}
+          </div>
         </div>
-      </div>
-      <span className={`tag${plan.status === "active" ? " active-tag" : ""}`}>
-        {STATUS_LABELS[plan.status]}
-      </span>
-    </Link>
+        <span className={`tag${plan.status === "active" ? " active-tag" : ""}`}>
+          {STATUS_LABELS[plan.status]}
+        </span>
+      </Link>
+      <button
+        className="button ghost icon-button"
+        title={isArchived ? "Restore plan" : "Archive plan"}
+        onClick={(e) => { e.preventDefault(); onToggleArchive(); }}
+      >
+        {isArchived ? <RotateCcw size={15} /> : <Archive size={15} />}
+      </button>
+    </div>
   );
 }

@@ -1,15 +1,16 @@
 "use client";
 
-import { ArrowLeft, ChevronRight, FileUp, GitBranch, History, LayoutGrid, Target, X, Zap } from "lucide-react";
+import { Archive, ArrowLeft, ChevronRight, Download, FileImage, FileText, FileUp, GitBranch, History, LayoutGrid, Target, X, Zap } from "lucide-react";
 import Link from "next/link";
-import { notFound, useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { notFound, useParams, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { formatPace } from "@/domain/training-plan";
 import { runAdaptations } from "@/domain/training-plan/adapt-plan";
 import { matchImportedActivities, parseActivityFile, type ActivityMatch, type ImportedActivity } from "@/domain/training-plan/activity-import";
 import type { TrainingWeek } from "@/domain/training-plan/types";
 import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
-import { applyAdaptation, getPlan, logSession } from "@/lib/plan-storage";
+import { applyAdaptation, getPlan, logSession, updatePlanStatus } from "@/lib/plan-storage";
+import { exportPlanDocx, exportPlanPdf, exportPlanWeekImage } from "@/lib/export";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -715,11 +716,13 @@ type Tab = "plan" | "import" | "adaptations" | "history";
 
 export default function PlanDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [plan, setPlan] = useState<SavedPlan | null>(null);
   const [weekIndex, setWeekIndex] = useState(0);
   const [tab, setTab] = useState<Tab>("plan");
   const [selectedEvent, setSelectedEvent] = useState<AdaptationEvent | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const calRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const p = getPlan(id);
@@ -738,6 +741,17 @@ export default function PlanDetailPage() {
     return countLoggedSessions(plan!.completedSessions, wi);
   }
 
+  function handleArchive() {
+    if (!plan) return;
+    const next: SavedPlan["status"] = plan.status === "archived" ? "active" : "archived";
+    updatePlanStatus(plan.id, next);
+    if (next === "archived") {
+      router.push("/app/plans");
+    } else {
+      setPlan(getPlan(plan.id) ?? plan);
+    }
+  }
+
   return (
     <>
       <div className="page-header">
@@ -751,6 +765,28 @@ export default function PlanDetailPage() {
             Week {weekIndex + 1} of {plan.plan.weeks.length} · {PHASE_LABELS[week.phase]}
             {week.is_deload ? " · Deload" : ""}
           </p>
+        </div>
+        <div className="button-row">
+          <button
+            className="button ghost"
+            title="Export week as PNG"
+            onClick={() => calRef.current && exportPlanWeekImage(calRef.current, plan.plan.meta.goal_race, weekIndex)}
+          >
+            <FileImage size={16} />
+            PNG
+          </button>
+          <button className="button ghost" title="Export full plan as PDF" onClick={() => exportPlanPdf(plan.plan)}>
+            <FileText size={16} />
+            PDF
+          </button>
+          <button className="button ghost" title="Export full plan as DOCX" onClick={() => exportPlanDocx(plan.plan)}>
+            <Download size={16} />
+            DOCX
+          </button>
+          <button className="button ghost" title={plan.status === "archived" ? "Restore plan" : "Archive plan"} onClick={handleArchive}>
+            <Archive size={16} />
+            {plan.status === "archived" ? "Restore" : "Archive"}
+          </button>
         </div>
       </div>
 
@@ -815,7 +851,7 @@ export default function PlanDetailPage() {
               </div>
             </aside>
 
-            <section className="plan-cal-section">
+            <section className="plan-cal-section" ref={calRef}>
               <div className="plan-cal-header">
                 <div>
                   <span className="card-kicker">{weekLabel(week)}</span>
