@@ -425,6 +425,74 @@ HR mode:
 - Tempo/interval: show warning that HR lags and pace/RPE is more reliable.
 - Always show RPE fallback.
 
+## Dashboard Plan
+
+The dashboard should not show default easy pace, cooldown pace, or other settings-level values. Those are not dashboard decisions. They belong in Settings and in the session execution view.
+
+Dashboard job:
+
+1. Show what the runner should do next.
+2. Show whether the current plan is on track.
+3. Surface recent adaptations, missed sessions, and imported runs.
+4. Give fast entry points into plan creation, today's session, logging, import, and feedback.
+
+Recommended dashboard layout:
+
+### Empty State
+
+When there is no active plan:
+
+- Primary panel: "No active training plan" with `Build a plan`.
+- Secondary action: `Create one-off workout`.
+- Small setup checklist:
+  - Choose goal race
+  - Add race estimate
+  - Add max HR
+  - Pick training days
+
+Do not show pace default cards in the empty state.
+
+### Active Plan State
+
+Top summary:
+
+- Active goal: race, date, weeks remaining.
+- Current week: week number, phase, planned weekly kilometres.
+- Plan status: on track, behind, adapted this week, or needs attention.
+
+Primary panel:
+
+- Today's session or next upcoming session.
+- Workout type, distance/duration, target mode, and one-line purpose.
+- CTA: `View session` or `Log session`.
+- If no session today, show next run date and a recovery/rest message.
+
+Useful metric cards:
+
+- Weekly progress: completed km / planned km.
+- Sessions completed this week: logged / planned.
+- Next long run: date, distance, complexity tag.
+- Recent adaptation: latest rule or "No changes this week".
+- Preference signal: favourite workout family or "No preferences learned yet".
+
+Secondary sections:
+
+- This week: compact list of upcoming sessions.
+- Recent activity: imported/logged sessions and adaptations.
+- Feedback prompt: show only when the latest completed workout has no like/dislike/favourite signal.
+
+Dashboard anti-goals:
+
+- Do not show default easy pace.
+- Do not show cooldown pace.
+- Do not show all pace zones.
+- Do not duplicate the full plan calendar.
+- Do not make the dashboard a settings page.
+
+Design note:
+
+This is an operational training dashboard, not a marketing page. Keep it dense, scannable, and action-oriented. The user should know their next workout within 3 seconds.
+
 ## Implementation Phases
 
 ### Phase 1: Profile And Inputs
@@ -585,6 +653,33 @@ Acceptance criteria:
 - Feedback changes future plans but does not violate training guardrails.
 - Core plan creation, session viewing, feedback, swap, and adaptation flows work on mobile.
 
+### Phase 9: Training Dashboard
+
+Goal: replace settings-style dashboard cards with a useful training cockpit.
+
+Tasks:
+
+1. Remove default easy pace and cooldown pace cards from `/app`.
+2. Add active-plan summary: goal, date, week, phase, weeks remaining.
+3. Add today's or next upcoming session card.
+4. Add weekly progress cards:
+   - completed km / planned km
+   - sessions logged / planned
+   - next long run
+   - latest adaptation or attention item
+5. Add a compact "This week" session list.
+6. Add recent activity feed for logs, imports, adaptations, and swaps.
+7. Add feedback prompt for the latest completed workout when no preference has been recorded.
+8. Improve empty state for users with no active plan.
+
+Acceptance criteria:
+
+- Dashboard no longer displays default easy pace or cooldown pace.
+- A runner with an active plan can identify the next workout in under 3 seconds.
+- A runner can see weekly completion progress without opening the full plan.
+- Empty dashboard focuses on creating a plan, not on settings.
+- Mobile layout preserves the same information priority.
+
 ## File-Level Implementation Map
 
 Likely new files:
@@ -607,8 +702,9 @@ Likely edited files:
 - `src/app/app/plans/new/page.tsx`
 - `src/app/app/plans/[id]/sessions/[sessionId]/page.tsx`
 - `src/app/app/plans/[id]/page.tsx`
+- `src/app/app/page.tsx`
 - `src/app/globals.css`
-- `plans/training-plan-generator/implementation-plan.md`
+- `plans/adaptive-workout-generation/implementation-plan.md`
 
 ## Test Strategy
 
@@ -645,6 +741,8 @@ UI tests:
 - user likes and favourites workout
 - user dislikes workout and swaps similar workout
 - future workouts reflect preference safely
+- dashboard shows next session and weekly progress
+- dashboard empty state does not show pace defaults
 
 ## Open Decisions
 

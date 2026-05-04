@@ -4,7 +4,7 @@ import { AlertCircle, ArrowLeft, ArrowRight, CheckCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { buildPlan } from "@/domain/training-plan/build-plan";
-import type { GoalRace, PlanInputs, Surface } from "@/domain/training-plan/types";
+import type { DifficultyPref, GoalRace, IntensityMode, Level, PlanInputs, Surface, TrainingFocus, VolumePref } from "@/domain/training-plan/types";
 import { createPlan, savePlan } from "@/lib/plan-storage";
 
 // ---------------------------------------------------------------------------
@@ -19,15 +19,22 @@ type FormState = {
   weeklyKm: string;
   longestRecentKm: string;
   // Step 3: Recent performance
-  performanceMode: "race" | "none";
+  performanceMode: "race" | "estimate" | "none";
   raceDistance: string;
   raceTime: string; // "HH:MM:SS" or "MM:SS"
-  // Step 4: Constraints
+  estimatedGoalTime: string; // estimated time for goal race distance
+  // Step 4: Preferences
+  selfSelectedLevel: Level | "";
+  trainingFocus: TrainingFocus;
+  volumePref: VolumePref;
+  difficultyPref: DifficultyPref;
+  intensityMode: IntensityMode;
+  // Step 5: Constraints
   daysPerWeek: string;
   sessionMinutesCap: string;
   longRunDay: string;
   surface: Surface;
-  // Step 5: Health
+  // Step 6: Health
   age: string;
   restingHR: string;
   maxHR: string;
@@ -42,6 +49,12 @@ const INITIAL: FormState = {
   performanceMode: "none",
   raceDistance: "",
   raceTime: "",
+  estimatedGoalTime: "",
+  selfSelectedLevel: "",
+  trainingFocus: "balanced",
+  volumePref: "steady",
+  difficultyPref: "balanced",
+  intensityMode: "pace",
   daysPerWeek: "4",
   sessionMinutesCap: "",
   longRunDay: "saturday",
@@ -169,11 +182,16 @@ function Step2({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void 
   );
 }
 
+const GOAL_RACE_LABEL: Record<GoalRace, string> = {
+  "5K": "5K", "10K": "10K", half: "half marathon", marathon: "marathon",
+};
+
 function Step3({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void }) {
+  const goalLabel = s.goalRace ? GOAL_RACE_LABEL[s.goalRace as GoalRace] : "goal race";
   return (
     <div className="stack">
       <div>
-        <p className="field-label">Recent performance</p>
+        <p className="field-label">Performance data</p>
         <div className="plan-perf-grid">
           <button
             type="button"
@@ -185,18 +203,26 @@ function Step3({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void 
           </button>
           <button
             type="button"
+            className={`plan-perf-btn${s.performanceMode === "estimate" ? " selected" : ""}`}
+            onClick={() => set({ performanceMode: "estimate" })}
+          >
+            <strong>I can estimate</strong>
+            <span>Rough idea of what I could run today</span>
+          </button>
+          <button
+            type="button"
             className={`plan-perf-btn${s.performanceMode === "none" ? " selected" : ""}`}
             onClick={() => set({ performanceMode: "none" })}
           >
             <strong>I don&apos;t know</strong>
-            <span>We&apos;ll estimate from your training volume</span>
+            <span>We&apos;ll estimate from training volume</span>
           </button>
         </div>
       </div>
       {s.performanceMode === "race" && (
         <>
           <div className="field">
-            <label className="field-label">Distance (km)</label>
+            <label className="field-label">Distance</label>
             <select
               className="select input"
               value={s.raceDistance}
@@ -224,11 +250,130 @@ function Step3({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void 
           </div>
         </>
       )}
+      {s.performanceMode === "estimate" && (
+        <div className="field">
+          <label className="field-label">
+            Estimated {goalLabel} time — if you raced today
+          </label>
+          <input
+            type="text"
+            className="input"
+            placeholder="mm:ss or hh:mm:ss"
+            value={s.estimatedGoalTime}
+            onChange={(e) => set({ estimatedGoalTime: e.target.value })}
+          />
+          <span className="field-hint">
+            Used to set your training paces. A rough estimate is fine.
+          </span>
+        </div>
+      )}
     </div>
   );
 }
 
-function Step4({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void }) {
+function Step4Preferences({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void }) {
+  return (
+    <div className="stack">
+      <div className="field">
+        <p className="field-label">Experience level</p>
+        <div className="segmented" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+          {(["beginner", "intermediate", "advanced"] as Level[]).map((l) => (
+            <button
+              key={l}
+              type="button"
+              className={s.selfSelectedLevel === l ? "selected" : ""}
+              onClick={() => set({ selfSelectedLevel: l })}
+            >
+              {l.charAt(0).toUpperCase() + l.slice(1)}
+            </button>
+          ))}
+        </div>
+        <span className="field-hint">
+          We&apos;ll verify this against your training data and use the safer estimate.
+        </span>
+      </div>
+      <div className="field">
+        <p className="field-label">Training focus</p>
+        <div className="segmented" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+          {([
+            ["balanced", "Balanced"],
+            ["speed", "Speed"],
+            ["endurance", "Endurance"],
+          ] as [TrainingFocus, string][]).map(([val, label]) => (
+            <button
+              key={val}
+              type="button"
+              className={s.trainingFocus === val ? "selected" : ""}
+              onClick={() => set({ trainingFocus: val })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="field">
+        <p className="field-label">Volume build</p>
+        <div className="segmented" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+          {([
+            ["gradual", "Gradual"],
+            ["steady", "Steady"],
+            ["progressive", "Progressive"],
+          ] as [VolumePref, string][]).map(([val, label]) => (
+            <button
+              key={val}
+              type="button"
+              className={s.volumePref === val ? "selected" : ""}
+              onClick={() => set({ volumePref: val })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="field">
+        <p className="field-label">Difficulty</p>
+        <div className="segmented" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+          {([
+            ["comfortable", "Comfortable"],
+            ["balanced", "Balanced"],
+            ["challenging", "Challenging"],
+          ] as [DifficultyPref, string][]).map(([val, label]) => (
+            <button
+              key={val}
+              type="button"
+              className={s.difficultyPref === val ? "selected" : ""}
+              onClick={() => set({ difficultyPref: val })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="field">
+        <p className="field-label">Workout intensity display</p>
+        <div className="segmented" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+          {([
+            ["pace", "Pace"],
+            ["rpe", "RPE"],
+            ["hr", "Heart rate"],
+          ] as [IntensityMode, string][]).map(([val, label]) => (
+            <button
+              key={val}
+              type="button"
+              className={s.intensityMode === val ? "selected" : ""}
+              onClick={() => set({ intensityMode: val })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="field-hint">You can change this in settings later.</span>
+      </div>
+    </div>
+  );
+}
+
+function Step5Schedule({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void }) {
   const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
   return (
     <div className="stack">
@@ -292,7 +437,7 @@ function Step4({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void 
   );
 }
 
-function Step5({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void }) {
+function Step6Health({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void }) {
   return (
     <div className="stack">
       <div className="field">
@@ -357,7 +502,8 @@ function Step5({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void 
 const STEPS = [
   { label: "Goal", description: "Race and date" },
   { label: "Training", description: "Current fitness" },
-  { label: "Performance", description: "Recent time or trial" },
+  { label: "Performance", description: "Recent time or estimate" },
+  { label: "Preferences", description: "Level and training style" },
   { label: "Schedule", description: "Days and surface" },
   { label: "Health", description: "Age and HR" },
 ];
@@ -371,10 +517,14 @@ function canProceed(step: number, s: FormState): boolean {
   if (step === 1) return !!s.weeklyKm && !!s.longestRecentKm;
   if (step === 2) {
     if (s.performanceMode === "none") return true;
+    if (s.performanceMode === "estimate") {
+      return !!s.estimatedGoalTime && parseRaceTimeSeconds(s.estimatedGoalTime) !== null;
+    }
     return !!s.raceDistance && !!s.raceTime && parseRaceTimeSeconds(s.raceTime) !== null;
   }
-  if (step === 3) return !!s.daysPerWeek;
-  if (step === 4) return !!s.age;
+  if (step === 3) return true; // preferences all have defaults
+  if (step === 4) return !!s.daysPerWeek;
+  if (step === 5) return !!s.age;
   return true;
 }
 
@@ -402,12 +552,18 @@ export default function NewPlanPage() {
           }
         : null;
 
+    const estimatedRaceTimeS =
+      form.performanceMode === "estimate" && form.estimatedGoalTime
+        ? parseRaceTimeSeconds(form.estimatedGoalTime)
+        : null;
+
     return {
       goal_race: form.goalRace as GoalRace,
       goal_date: form.goalDate,
       current_weekly_km: Number(form.weeklyKm),
       longest_recent_km: Number(form.longestRecentKm),
       recent_race: recentRace,
+      estimated_race_time_s: estimatedRaceTimeS,
       age: Number(form.age),
       resting_hr: form.restingHR ? Number(form.restingHR) : null,
       max_hr: form.maxHR ? Number(form.maxHR) : null,
@@ -418,6 +574,11 @@ export default function NewPlanPage() {
       injury_flags: form.injuryFlags
         ? form.injuryFlags.split(",").map((s) => s.trim()).filter(Boolean)
         : [],
+      self_selected_level: form.selfSelectedLevel || null,
+      training_focus: form.trainingFocus,
+      volume_preference: form.volumePref,
+      difficulty_preference: form.difficultyPref,
+      intensity_mode: form.intensityMode,
     };
   }
 
@@ -467,8 +628,9 @@ export default function NewPlanPage() {
         {step === 0 && <Step1 s={form} set={patch} />}
         {step === 1 && <Step2 s={form} set={patch} />}
         {step === 2 && <Step3 s={form} set={patch} />}
-        {step === 3 && <Step4 s={form} set={patch} />}
-        {step === 4 && <Step5 s={form} set={patch} />}
+        {step === 3 && <Step4Preferences s={form} set={patch} />}
+        {step === 4 && <Step5Schedule s={form} set={patch} />}
+        {step === 5 && <Step6Health s={form} set={patch} />}
 
         {error && (
           <div className="plan-warn" style={{ marginTop: 16 }}>

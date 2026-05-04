@@ -7,7 +7,7 @@ import {
   PlannedSession, Paces, SessionType,
 } from "./types";
 import { vdotFromRace, pacesFromVdot, riegelPredict, tanakaHrmax, hrZones } from "./vdot";
-import { classifyRunner } from "./classify-runner";
+import { classifyRunner, resolveSafeLevel } from "./classify-runner";
 
 // ---------------------------------------------------------------------------
 // Constants (same values as build_plan.py, same source citations)
@@ -477,6 +477,19 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
     vdotSource = "race";
   }
 
+  // Estimated race time for the goal distance is a secondary VDOT source.
+  // Only used when no actual recent race is available.
+  if (vdot === null && inputs.estimated_race_time_s) {
+    const GOAL_DISTANCE_M: Record<string, number> = {
+      "5K": 5000, "10K": 10000, half: 21097, marathon: 42195,
+    };
+    const distanceM = GOAL_DISTANCE_M[goal_race];
+    if (distanceM) {
+      vdot = vdotFromRace(distanceM, inputs.estimated_race_time_s);
+      vdotSource = "race";
+    }
+  }
+
   if (vdot === null && longest_recent_km >= 5) {
     const estimatedTime = Math.round(longest_recent_km * 390);
     vdot = vdotFromRace(Math.round(longest_recent_km * 1000), estimatedTime);
@@ -493,8 +506,12 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
   const hrmax = inputs.max_hr ?? tanakaHrmax(age);
   const zones = hrZones(hrmax);
 
-  // 3. Level
-  const level = classifyRunner(goal_race, current_weekly_km, longest_recent_km, vdot);
+  // 3. Level — infer from training data, then apply safe-level resolution if user
+  //    self-selected. Self-selected level can only go downward (conservative).
+  const inferredLevel = classifyRunner(goal_race, current_weekly_km, longest_recent_km, vdot);
+  const level = inputs.self_selected_level
+    ? resolveSafeLevel(inputs.self_selected_level, inferredLevel)
+    : inferredLevel;
 
   // 4. Plan length
   const msPerWeek = 7 * 24 * 60 * 60 * 1000;
@@ -574,6 +591,7 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
       goal_race,
       goal_date,
       level,
+      inferred_level: inferredLevel,
       weeks_total: weeksTotal,
       start_date: isoDate(planStart),
       vdot,
@@ -581,6 +599,10 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
       peak_weekly_km: peakKm,
       hrmax,
       generated_at: new Date().toISOString(),
+      intensity_mode: inputs.intensity_mode ?? "pace",
+      training_focus: inputs.training_focus ?? "balanced",
+      volume_preference: inputs.volume_preference ?? "steady",
+      difficulty_preference: inputs.difficulty_preference ?? "balanced",
     },
     paces,
     hr_zones: zones,

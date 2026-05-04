@@ -6,6 +6,10 @@ export type Level = "beginner" | "intermediate" | "advanced";
 export type Phase = "base" | "build" | "peak" | "taper";
 export type Surface = "road" | "trail" | "treadmill" | "track" | "mixed";
 export type VdotSource = "race" | "riegel_estimate" | "hr_fallback" | "none";
+export type TrainingFocus = "balanced" | "speed" | "endurance";
+export type VolumePref = "gradual" | "steady" | "progressive";
+export type DifficultyPref = "comfortable" | "balanced" | "challenging";
+export type IntensityMode = "pace" | "rpe" | "hr";
 
 export type SessionType =
   | "easy"
@@ -32,6 +36,9 @@ export interface PlanInputs {
   current_weekly_km: number;
   longest_recent_km: number;
   recent_race?: RecentRace | null;
+  // User's estimated finish time for the goal race distance (seconds).
+  // Used to derive VDOT when no recent_race is available.
+  estimated_race_time_s?: number | null;
   age: number;
   resting_hr?: number | null;
   max_hr?: number | null;
@@ -40,6 +47,12 @@ export interface PlanInputs {
   long_run_day?: string;
   surface?: Surface;
   injury_flags?: string[];
+  // Training preferences
+  self_selected_level?: Level | null;
+  training_focus?: TrainingFocus;
+  volume_preference?: VolumePref;
+  difficulty_preference?: DifficultyPref;
+  intensity_mode?: IntensityMode;
 }
 
 export interface Paces {
@@ -63,6 +76,7 @@ export interface PlanMeta {
   goal_race: GoalRace;
   goal_date: string;
   level: Level;
+  inferred_level: Level;
   weeks_total: number;
   start_date: string;
   vdot: number | null;
@@ -70,6 +84,10 @@ export interface PlanMeta {
   peak_weekly_km: number;
   hrmax: number;
   generated_at: string;
+  intensity_mode: IntensityMode;
+  training_focus: TrainingFocus;
+  volume_preference: VolumePref;
+  difficulty_preference: DifficultyPref;
 }
 
 export interface PlannedSession {

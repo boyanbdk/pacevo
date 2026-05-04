@@ -88,4 +88,5 @@ export type UserSettings = {
   preferredOutputMode: OutputFormat;
   preferredDisplayStyle: DisplayStyle;
   brandTheme: "volt";
+  intensityMode: "pace" | "rpe" | "hr";
 };

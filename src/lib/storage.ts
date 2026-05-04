@@ -6,7 +6,8 @@ export const defaultSettings: UserSettings = {
   defaultRestWalkSpeed: 5,
   preferredOutputMode: "treadmill-time",
   preferredDisplayStyle: "table",
-  brandTheme: "volt"
+  brandTheme: "volt",
+  intensityMode: "pace",
 };
 
 export type LocalUser = {

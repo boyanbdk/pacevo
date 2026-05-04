@@ -32,6 +32,15 @@ function scoreSignal(value: number, [intermediate, advanced]: [number, number]):
   return "beginner";
 }
 
+// Returns the safer of two levels (the lower one).
+// Per plan rules: self-selected level can only override inferred level downward
+// without explicit confirmation. Upward overrides are silently clamped to inferred.
+export function resolveSafeLevel(selfSelected: Level, inferred: Level): Level {
+  return LEVEL_ORDER.indexOf(inferred) < LEVEL_ORDER.indexOf(selfSelected)
+    ? inferred
+    : selfSelected;
+}
+
 export function classifyRunner(
   goalRace: GoalRace,
   currentWeeklyKm: number,

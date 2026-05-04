@@ -59,6 +59,17 @@ export default function SettingsPage() {
             </select>
           </div>
         </div>
+        <div className="field">
+          <label>Intensity display mode</label>
+          <select className="select" value={settings.intensityMode} onChange={(event) => setSettings({ ...settings, intensityMode: event.target.value as UserSettings["intensityMode"] })}>
+            <option value="pace">Pace — show target pace per km</option>
+            <option value="rpe">RPE — show perceived effort (1–10)</option>
+            <option value="hr">Heart rate — show HR zone targets</option>
+          </select>
+          <span className="field-hint" style={{ marginTop: 4, display: "block" }}>
+            Training plans respect this setting. Tempo and interval sessions always show pace as a reference.
+          </span>
+        </div>
         <button className="button primary" type="submit">
           <Save size={17} />
           Save settings
