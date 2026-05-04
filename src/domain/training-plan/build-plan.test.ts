@@ -216,3 +216,45 @@ test("output is deterministic", () => {
   expect(p1.weeks.map(w => w.total_km)).toEqual(p2.weeks.map(w => w.total_km));
   expect(p1.weeks.map(w => w.phase)).toEqual(p2.weeks.map(w => w.phase));
 });
+
+test("generated run sessions carry recipe metadata", () => {
+  const plan = buildPlan(INTERMEDIATE_HALF);
+  const runSessions = plan.weeks
+    .flatMap(w => w.sessions)
+    .filter(s => s.type !== "rest");
+
+  expect(runSessions.length).toBeGreaterThan(0);
+  for (const session of runSessions) {
+    expect(session.recipe_id).toBeTruthy();
+    expect(session.recipe_family).toBeTruthy();
+    expect(session.stimulus).toBeTruthy();
+  }
+});
+
+test("quality sessions come from varied recipes, not the old fixed interval path", () => {
+  const plan = buildPlan(INTERMEDIATE_HALF);
+  const qualityIds = plan.weeks
+    .flatMap(w => w.sessions)
+    .filter(s => s.session_role === "quality")
+    .map(s => s.recipe_id);
+
+  expect(new Set(qualityIds).size).toBeGreaterThan(1);
+  expect(qualityIds).not.toEqual(["interval_5x1000"]);
+});
+
+test("quality recipes do not repeat inside a 3-week window when alternatives exist", () => {
+  const plan = buildPlan(INTERMEDIATE_HALF);
+  const qualityByWeek = plan.weeks.map(w =>
+    w.sessions
+      .filter(s => s.session_role === "quality")
+      .map(s => s.recipe_id)
+      .filter((id): id is string => Boolean(id)),
+  );
+
+  for (let i = 0; i < qualityByWeek.length; i++) {
+    const recent = qualityByWeek.slice(Math.max(0, i - 3), i).flat();
+    for (const id of qualityByWeek[i]) {
+      expect(recent).not.toContain(id);
+    }
+  }
+});

@@ -94,6 +94,10 @@ export interface PlannedSession {
   day_index: number;
   date: string;
   type: SessionType;
+  session_role?: "easy" | "long" | "quality" | "recovery" | "rest";
+  recipe_id?: string | null;
+  recipe_family?: WorkoutFamily | null;
+  stimulus?: RecipeStimulus | null;
   target_km: number | null;
   target_duration_min: number | null;
   pace_low_s_km: number | null;

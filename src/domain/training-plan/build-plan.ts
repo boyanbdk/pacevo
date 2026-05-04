@@ -1,13 +1,14 @@
-// Training plan builder — TypeScript mirror of scripts/build_plan.py.
-// Must stay in sync with the Python implementation and produce identical
-// output for the same inputs (verified by golden tests in build-plan.test.ts).
+// Training plan builder.
+// Volume, phase, and guardrail constants mirror scripts/build_plan.py; workout
+// sessions are generated through the TypeScript recipe selector.
 
 import {
   GoalRace, Level, Phase, PlanInputs, TrainingPlan, TrainingWeek,
-  PlannedSession, Paces, SessionType,
+  PlannedSession, Paces, WorkoutContext, WorkoutRecipe,
 } from "./types";
 import { vdotFromRace, pacesFromVdot, riegelPredict, tanakaHrmax, hrZones } from "./vdot";
 import { classifyRunner, resolveSafeLevel } from "./classify-runner";
+import { selectWorkoutRecipe } from "./select-workout-recipe";
 
 // ---------------------------------------------------------------------------
 // Constants (same values as build_plan.py, same source citations)
@@ -82,12 +83,6 @@ function nextMonday(from: Date): Date {
 
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
-}
-
-function fmtPace(sKm: number): string {
-  const m = Math.floor(sKm / 60);
-  const s = sKm % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,73 +179,11 @@ function buildVolumeCurve(
 // Session layout
 // ---------------------------------------------------------------------------
 
-const SESSION_DESCRIPTIONS: Partial<Record<SessionType, string>> = {
-  easy:          "Easy aerobic run. Conversational pace, Z1-Z2.",
-  long:          "Long run. Steady aerobic effort, Z2. Build aerobic base and fat adaptation.",
-  strides:       "6×20 s strides at ~mile pace with 60 s walking recovery. Activates neuromuscular system.",
-  hills:         "Hill repeats: 6–8×60 s uphill at hard effort, easy jog back. Builds strength and form.",
-  fartlek:       "Fartlek: 20–30 min easy with 4–6×1 min surges at 10K effort.",
-  tempo:         "Threshold tempo run at T pace (roughly 1-hour race effort). Raises lactate threshold.",
-  interval:      "VO2max intervals at I pace. 5×1000 m with 400 m easy recovery between reps.",
-  marathon_pace: "Long run with marathon-pace segments. Middle km at M pace, bookended by easy.",
-  repetition:    "Short fast repetitions at R pace. 6–8×400 m with full recovery.",
-  recovery:      "Recovery run. Very easy, Z1. Flush legs after hard effort.",
-  rest:          "Full rest day. No running.",
-};
-
-const SESSION_RATIONALE: Partial<Record<SessionType, string>> = {
-  easy:          "80% of all running should be at easy aerobic pace. Source: Seiler 2010.",
-  long:          "Long runs build aerobic capacity. Cap at 30% weekly volume. Source: Daniels.",
-  strides:       "Strides improve running economy with minimal fatigue. Source: Daniels.",
-  hills:         "Hills build strength and VO2max with low injury risk. Source: Pfitzinger.",
-  fartlek:       "Unstructured speed work eases beginners into quality sessions. Source: Higdon.",
-  tempo:         "Threshold work is the single best predictor of marathon performance. Source: Pfitzinger.",
-  interval:      "VO2max intervals are the most efficient way to raise aerobic ceiling. Source: Daniels.",
-  marathon_pace: "Race-specific conditioning. Teaches the body to sustain MP under fatigue. Source: Pfitzinger.",
-  repetition:    "Speed and form work. Minimal fatigue when full recovery is taken. Source: Daniels.",
-  recovery:      "Active recovery flushes metabolic waste and prevents stiffness. Source: Daniels.",
-  rest:          "Rest is when adaptation happens. At least 1 rest day per week is mandatory.",
-};
-
-const WORKOUT_TYPES_BY_PHASE: Record<Phase, SessionType[]> = {
-  base:  ["strides", "hills", "fartlek"],
-  build: ["tempo", "interval"],
-  peak:  ["marathon_pace", "tempo", "interval"],
-  taper: ["strides", "tempo"],
-};
+const REST_DESCRIPTION = "Full rest day. No running.";
+const REST_RATIONALE = "Rest is when adaptation happens. At least 1 rest day per week is mandatory.";
 
 function dayIndex(dayName: string): number {
   return DAY_NAMES.indexOf(dayName.toLowerCase()) + 1;
-}
-
-function makeSession(opts: {
-  dayIndex: number;
-  date: Date;
-  type: SessionType;
-  targetKm: number;
-  paceLow: number;
-  paceHigh: number;
-  hrZone: string;
-  rpe: number;
-  mainSet: string;
-}): PlannedSession {
-  const isQuality = !["easy", "long", "recovery", "rest"].includes(opts.type);
-  return {
-    day_index: opts.dayIndex,
-    date: isoDate(opts.date),
-    type: opts.type,
-    target_km: opts.targetKm,
-    target_duration_min: null,
-    pace_low_s_km: opts.paceLow,
-    pace_high_s_km: opts.paceHigh,
-    hr_zone: opts.hrZone,
-    target_rpe: opts.rpe,
-    description: SESSION_DESCRIPTIONS[opts.type] ?? "",
-    rationale: SESSION_RATIONALE[opts.type] ?? "",
-    warmup: isQuality ? "10 min easy jog" : null,
-    main_set: opts.mainSet,
-    cooldown: isQuality ? "5–10 min easy jog" : null,
-  };
 }
 
 function restSession(di: number, d: Date): PlannedSession {
@@ -258,17 +191,32 @@ function restSession(di: number, d: Date): PlannedSession {
     day_index: di,
     date: isoDate(d),
     type: "rest",
+    session_role: "rest",
     target_km: null,
     target_duration_min: null,
     pace_low_s_km: null,
     pace_high_s_km: null,
     hr_zone: null,
     target_rpe: null,
-    description: SESSION_DESCRIPTIONS.rest ?? "",
-    rationale: SESSION_RATIONALE.rest ?? "",
+    description: REST_DESCRIPTION,
+    rationale: REST_RATIONALE,
     warmup: null,
     main_set: null,
     cooldown: null,
+  };
+}
+
+function buildRecipeSession(
+  recipe: WorkoutRecipe,
+  ctx: WorkoutContext,
+  role: PlannedSession["session_role"],
+): PlannedSession {
+  return {
+    ...recipe.build(ctx),
+    session_role: role,
+    recipe_id: recipe.id,
+    recipe_family: recipe.family,
+    stimulus: recipe.stimulus,
   };
 }
 
@@ -279,10 +227,14 @@ function layoutWeek(
   longRunKm: number,
   phase: Phase,
   level: Level,
+  goalRace: GoalRace,
   isDeload: boolean,
   daysPerWeek: number,
   longRunDay: string,
   paces: Paces,
+  trainingFocus: PlanInputs["training_focus"],
+  difficultyPreference: PlanInputs["difficulty_preference"],
+  recentQualityRecipeIds: string[],
 ): PlannedSession[] {
   const longDayIdx = dayIndex(longRunDay);
   let qualityCount = isDeload ? 0 : QUALITY_COUNT[phase][level];
@@ -293,9 +245,6 @@ function layoutWeek(
 
   const easyDays = Math.max(0, daysPerWeek - 1 - qualityCount);
   const easyKm = round1((totalKm - longRunKm) / Math.max(easyDays + qualityCount, 1));
-
-  const qualityTypes = WORKOUT_TYPES_BY_PHASE[phase];
-  const qualityType: SessionType = qualityTypes[0] ?? "tempo";
 
   const restAfterLong = (longDayIdx % 7) + 1;
   const usedDays = new Set([longDayIdx, restAfterLong]);
@@ -319,81 +268,56 @@ function layoutWeek(
   const sessions: PlannedSession[] = [];
   for (let di = 1; di <= 7; di++) {
     const sessionDate = addDays(weekStart, di - 1);
+    const ctx: WorkoutContext = {
+      dayIndex: di,
+      date: sessionDate,
+      targetKm: di === longDayIdx ? longRunKm : easyKm,
+      paces,
+      level,
+      phase,
+      goalRace,
+      weeklyKm: totalKm,
+      weekIndex,
+    };
 
     if (di === longDayIdx) {
-      sessions.push(makeSession({
-        dayIndex: di, date: sessionDate, type: "long",
-        targetKm: longRunKm, paceLow: paces.E_low, paceHigh: paces.E_high,
-        hrZone: "Z2", rpe: 5,
-        mainSet: `${longRunKm.toFixed(1)} km easy long run`,
-      }));
+      const recipe = selectWorkoutRecipe({
+        target: "long",
+        ctx,
+        daysPerWeek,
+        trainingFocus,
+        difficultyPreference,
+        preferCutback: isDeload,
+      });
+      sessions.push(buildRecipeSession(recipe, ctx, "long"));
     } else if (di === restAfterLong) {
       sessions.push(restSession(di, sessionDate));
     } else if (qDays.includes(di)) {
-      sessions.push(makeQualitySession(di, sessionDate, qualityType, easyKm, paces));
+      const recipe = selectWorkoutRecipe({
+        target: "quality",
+        ctx,
+        daysPerWeek,
+        recentRecipeIds: recentQualityRecipeIds,
+        trainingFocus,
+        difficultyPreference,
+      });
+      recentQualityRecipeIds.push(recipe.id);
+      sessions.push(buildRecipeSession(recipe, ctx, "quality"));
     } else if (eDays.includes(di)) {
-      sessions.push(makeSession({
-        dayIndex: di, date: sessionDate, type: "easy",
-        targetKm: easyKm, paceLow: paces.E_low, paceHigh: paces.E_high,
-        hrZone: "Z2", rpe: 4,
-        mainSet: `${easyKm.toFixed(1)} km easy run`,
-      }));
+      const recipe = selectWorkoutRecipe({
+        target: "easy",
+        ctx,
+        daysPerWeek,
+        trainingFocus,
+        difficultyPreference,
+      });
+      sessions.push(buildRecipeSession(recipe, ctx, "easy"));
     } else {
       sessions.push(restSession(di, sessionDate));
     }
   }
 
   return sessions;
-}
-
-function makeQualitySession(
-  di: number,
-  d: Date,
-  qType: SessionType,
-  easyKm: number,
-  paces: Paces,
-): PlannedSession {
-  let paceLow: number, paceHigh: number, mainSet: string, rpe: number, hrZone: string;
-
-  switch (qType) {
-    case "tempo":
-      paceLow = paceHigh = paces.T ?? paces.E_low;
-      mainSet = `20–30 min at T pace (${fmtPace(paceLow)} /km)`;
-      rpe = 7; hrZone = "Z3"; break;
-    case "interval":
-      paceLow = paceHigh = paces.I ?? paces.E_low;
-      mainSet = `5×1000 m at I pace (${fmtPace(paceLow)} /km) with 400 m easy recovery`;
-      rpe = 9; hrZone = "Z4"; break;
-    case "marathon_pace":
-      paceLow = paceHigh = paces.M ?? paces.E_low;
-      mainSet = `Middle third at M pace (${fmtPace(paceLow)} /km)`;
-      rpe = 6; hrZone = "Z3"; break;
-    case "strides":
-      paceLow = paceHigh = paces.R ?? paces.E_low;
-      mainSet = "6×20 s strides at mile pace with 60 s walk recovery";
-      rpe = 7; hrZone = "Z4"; break;
-    default:
-      paceLow = paces.E_low; paceHigh = paces.E_high;
-      mainSet = SESSION_DESCRIPTIONS[qType] ?? "Quality session";
-      rpe = 7; hrZone = "Z3";
-  }
-
-  return {
-    day_index: di,
-    date: isoDate(d),
-    type: qType,
-    target_km: easyKm,
-    target_duration_min: null,
-    pace_low_s_km: paceLow,
-    pace_high_s_km: paceHigh,
-    hr_zone: hrZone,
-    target_rpe: rpe,
-    description: SESSION_DESCRIPTIONS[qType] ?? "",
-    rationale: SESSION_RATIONALE[qType] ?? "",
-    warmup: "10 min easy jog",
-    main_set: mainSet,
-    cooldown: "5–10 min easy jog",
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -543,20 +467,28 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
   for (let i = 0; i < weeksTotal; i++) {
     const phase = phases[i];
     const isDeload = phase !== "taper" && ++loadWeekCounter % DELOAD_EVERY_N_WEEKS === 0;
-    if (isDeload) loadWeekCounter = loadWeekCounter; // already incremented
 
     const vol = volumes[i];
     const longRunKm = round1(Math.min(vol * 0.30, LONG_RUN_CAP_KM[goal_race]));
     const acwr = computeAcwr(i, volumes);
     const weekStart = addDays(planStart, i * 7);
+    const recentQualityRecipeIds = weeks
+      .slice(-3)
+      .flatMap(w => w.sessions)
+      .filter(s => s.session_role === "quality")
+      .map(s => s.recipe_id)
+      .filter((id): id is string => Boolean(id));
 
     const sessions = layoutWeek(
-      i + 1, weekStart, vol, longRunKm, phase, level, isDeload,
+      i + 1, weekStart, vol, longRunKm, phase, level, goal_race, isDeload,
       days_per_week, longRunDay, paces,
+      inputs.training_focus ?? "balanced",
+      inputs.difficulty_preference ?? "balanced",
+      recentQualityRecipeIds,
     );
 
     const qualityCount = sessions.filter(
-      s => !["easy","long","recovery","rest"].includes(s.type)
+      s => s.session_role === "quality"
     ).length;
 
     weeks.push({
