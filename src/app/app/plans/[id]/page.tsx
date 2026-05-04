@@ -1,13 +1,15 @@
 "use client";
 
-import { ArrowLeft, ChevronRight, GitBranch, History, LayoutGrid, Target, X, Zap } from "lucide-react";
+import { ArrowLeft, ChevronRight, FileUp, GitBranch, History, LayoutGrid, Target, X, Zap } from "lucide-react";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { formatPace } from "@/domain/training-plan";
+import { runAdaptations } from "@/domain/training-plan/adapt-plan";
+import { matchImportedActivities, parseActivityFile, type ActivityMatch, type ImportedActivity } from "@/domain/training-plan/activity-import";
 import type { TrainingWeek } from "@/domain/training-plan/types";
 import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
-import { getPlan } from "@/lib/plan-storage";
+import { applyAdaptation, getPlan, logSession } from "@/lib/plan-storage";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -88,11 +90,231 @@ function countLoggedSessions(sessions: CompletedSession[], weekIndex?: number): 
   return keys.size;
 }
 
+function currentWeekIndexForPlan(plan: SavedPlan): number {
+  const today = new Date();
+  const startDate = new Date(plan.plan.meta.start_date);
+  return Math.min(
+    Math.max(0, Math.floor((today.getTime() - startDate.getTime()) / (7 * 86400000))),
+    plan.plan.weeks.length - 1,
+  );
+}
+
 function weekLabel(week: TrainingWeek): string {
   const tags = [];
   if (week.is_deload) tags.push("Deload");
   tags.push(PHASE_LABELS[week.phase]);
   return tags.join(" · ");
+}
+
+// ---------------------------------------------------------------------------
+// Activity import panel
+// ---------------------------------------------------------------------------
+
+function matchStatusLabel(status: ActivityMatch["status"]): string {
+  switch (status) {
+    case "auto": return "Ready";
+    case "suggestion": return "Review";
+    case "duplicate": return "Logged";
+    case "unmatched": return "Unmatched";
+  }
+}
+
+function matchStatusClass(status: ActivityMatch["status"]): string {
+  if (status === "auto") return "active-tag";
+  if (status === "suggestion") return "warn";
+  return "";
+}
+
+function ImportedActivityPanel({
+  plan,
+  onPlanChanged,
+}: {
+  plan: SavedPlan;
+  onPlanChanged: (plan: SavedPlan) => void;
+}) {
+  const [activities, setActivities] = useState<ImportedActivity[]>([]);
+  const [matches, setMatches] = useState<ActivityMatch[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  function refreshMatches(nextPlan: SavedPlan, nextActivities = activities) {
+    setMatches(matchImportedActivities(nextPlan.plan, nextActivities, nextPlan.completedSessions));
+  }
+
+  async function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setError(null);
+    setMessage(null);
+    try {
+      const parsed: ImportedActivity[] = [];
+      for (const file of Array.from(files)) {
+        parsed.push(...parseActivityFile(file.name, await file.text()));
+      }
+      if (parsed.length === 0) {
+        setActivities([]);
+        setMatches([]);
+        setError("No runnable activities were found in those files.");
+        return;
+      }
+      setActivities(parsed);
+      setMatches(matchImportedActivities(plan.plan, parsed, plan.completedSessions));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not parse activity file.");
+    }
+  }
+
+  function applySingleImport(match: ActivityMatch): SavedPlan | null {
+    if (match.weekIndex === null || match.dayIndex === null) return null;
+    const session = plan.plan.weeks[match.weekIndex]?.sessions.find((s) => s.day_index === match.dayIndex);
+    if (!session) return null;
+
+    logSession(plan.id, {
+      weekIndex: match.weekIndex,
+      dayIndex: match.dayIndex,
+      date: session.date,
+      actualKm: match.activity.distanceKm,
+      actualDurationMin: match.activity.durationMin,
+      avgHR: match.activity.avgHR,
+      maxHR: match.activity.maxHR,
+      rpe: null,
+      note: `Imported from ${match.activity.fileName}`,
+      source: "file_import",
+    });
+
+    let refreshed = getPlan(plan.id)!;
+    const result = runAdaptations(
+      refreshed.plan,
+      refreshed.completedSessions,
+      refreshed.inputs,
+      currentWeekIndexForPlan(refreshed),
+    );
+
+    if (result) {
+      refreshed = applyAdaptation(plan.id, result.newPlan, {
+        rule: result.rule,
+        explanation: result.explanation,
+        triggeredBySessionIds: result.triggeredBySessionIds,
+        firedAt: new Date().toISOString(),
+      }).plan;
+    }
+
+    return refreshed;
+  }
+
+  function importMatches(status: "auto" | "suggestion", selectedMatch?: ActivityMatch) {
+    const selected = selectedMatch ? [selectedMatch] : matches.filter((match) => match.status === status);
+    if (selected.length === 0) return;
+    setImporting(true);
+    setMessage(null);
+    try {
+      let updated: SavedPlan | null = null;
+      for (const match of selected) {
+        updated = applySingleImport(match) ?? updated;
+      }
+      if (updated) {
+        onPlanChanged(updated);
+        refreshMatches(updated);
+        setMessage(`${selected.length} activit${selected.length === 1 ? "y" : "ies"} imported.`);
+      }
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  const autoCount = matches.filter((match) => match.status === "auto").length;
+
+  return (
+    <div className="import-panel">
+      <div className="import-drop">
+        <FileUp size={26} />
+        <div>
+          <h3>Activity files</h3>
+          <p className="muted">GPX and TCX runs from Garmin, Strava, Coros, Suunto, or Apple Health exports.</p>
+        </div>
+        <label className="button primary import-file-button">
+          Choose files
+          <input
+            className="hidden"
+            type="file"
+            accept=".gpx,.tcx,application/gpx+xml,application/vnd.garmin.tcx+xml"
+            multiple
+            onChange={(event) => handleFiles(event.target.files)}
+          />
+        </label>
+      </div>
+
+      {error && <div className="plan-warn">{error}</div>}
+      {message && <div className="adapt-banner" style={{ marginBottom: 0 }}>{message}</div>}
+
+      {matches.length > 0 && (
+        <>
+          <div className="import-toolbar">
+            <span className="muted">{matches.length} activit{matches.length === 1 ? "y" : "ies"} parsed</span>
+            <button
+              className="button primary"
+              disabled={autoCount === 0 || importing}
+              type="button"
+              onClick={() => importMatches("auto")}
+            >
+              Import ready matches
+            </button>
+          </div>
+
+          <div className="import-match-list">
+            {matches.map((match) => {
+              const session = match.weekIndex === null || match.dayIndex === null
+                ? null
+                : plan.plan.weeks[match.weekIndex]?.sessions.find((s) => s.day_index === match.dayIndex);
+              return (
+                <div key={match.activity.id} className="import-match-row">
+                  <div className="import-match-main">
+                    <div className="import-match-title">
+                      <strong>{match.activity.name}</strong>
+                      <span className={`tag ${matchStatusClass(match.status)}`}>
+                        {matchStatusLabel(match.status)}
+                      </span>
+                    </div>
+                    <div className="muted">
+                      {match.activity.date} · {match.activity.distanceKm.toFixed(2)} km · {match.activity.durationMin.toFixed(0)} min
+                      {match.activity.avgHR ? ` · ${match.activity.avgHR} bpm` : ""}
+                    </div>
+                    {session && (
+                      <div className="import-match-target">
+                        Week {match.weekIndex! + 1} · {DAY_ABBRS[session.day_index]} · {SESSION_LABELS[session.type]}
+                        {session.target_km ? ` · ${session.target_km.toFixed(1)} km planned` : ""}
+                      </div>
+                    )}
+                    <p>{match.reason}</p>
+                  </div>
+                  {match.status === "suggestion" && (
+                    <button
+                      className="button ghost"
+                      disabled={importing}
+                      type="button"
+                      onClick={() => importMatches("suggestion", match)}
+                    >
+                      Import
+                    </button>
+                  )}
+                  {match.status === "auto" && (
+                    <button
+                      className="button ghost"
+                      disabled={importing}
+                      type="button"
+                      onClick={() => importMatches("auto", match)}
+                    >
+                      Import
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -489,7 +711,7 @@ function VersionHistory({ versions }: { versions: PlanVersion[] }) {
 // Page
 // ---------------------------------------------------------------------------
 
-type Tab = "plan" | "adaptations" | "history";
+type Tab = "plan" | "import" | "adaptations" | "history";
 
 export default function PlanDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -502,10 +724,7 @@ export default function PlanDetailPage() {
   useEffect(() => {
     const p = getPlan(id);
     if (!p) { setLoaded(true); return; }
-    const today = new Date();
-    const startDate = new Date(p.plan.meta.start_date);
-    const elapsed = Math.floor((today.getTime() - startDate.getTime()) / (7 * 86400000));
-    setWeekIndex(Math.min(Math.max(0, elapsed), p.plan.weeks.length - 1));
+    setWeekIndex(currentWeekIndexForPlan(p));
     setPlan(p);
     setLoaded(true);
   }, [id]);
@@ -557,6 +776,14 @@ export default function PlanDetailPage() {
           {plan.adaptationEvents.length > 0 && (
             <span className="plan-tab-badge">{plan.adaptationEvents.length}</span>
           )}
+        </button>
+        <button
+          className={`plan-tab${tab === "import" ? " active" : ""}`}
+          onClick={() => setTab("import")}
+          type="button"
+        >
+          <FileUp size={15} />
+          Import
         </button>
         <button
           className={`plan-tab${tab === "history" ? " active" : ""}`}
@@ -645,6 +872,16 @@ export default function PlanDetailPage() {
             Every time the plan adjusts based on your logged sessions, the reason is recorded here.
           </p>
           <AdaptationTimeline events={plan.adaptationEvents} onSelect={setSelectedEvent} />
+        </div>
+      )}
+
+      {tab === "import" && (
+        <div className="panel">
+          <h2>Activity import</h2>
+          <p className="muted" style={{ marginBottom: 16 }}>
+            Same-date matches can be logged directly. Date mismatches stay as review suggestions.
+          </p>
+          <ImportedActivityPanel plan={plan} onPlanChanged={setPlan} />
         </div>
       )}
 

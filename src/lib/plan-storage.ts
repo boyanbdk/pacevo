@@ -16,7 +16,7 @@ export type CompletedSession = {
   maxHR: number | null;
   rpe: number | null;
   note: string;
-  source: "manual";
+  source: "manual" | "file_import";
   createdAt: string;
 };
 

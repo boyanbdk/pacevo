@@ -1267,6 +1267,94 @@ button {
 }
 
 /* ============================================================
+   Phase 6 — activity import
+   ============================================================ */
+
+.import-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.import-drop {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+  border: 1px dashed rgba(40, 210, 174, 0.36);
+  border-radius: var(--radius);
+  background: rgba(40, 210, 174, 0.06);
+}
+
+.import-drop h3 {
+  margin: 0 0 4px;
+}
+
+.import-drop p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.import-file-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.import-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.import-match-list {
+  display: grid;
+  gap: 8px;
+}
+
+.import-match-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.import-match-main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.import-match-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.import-match-target {
+  width: fit-content;
+  max-width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.import-match-row p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* ============================================================
    Phase 5 — version history
    ============================================================ */
 
@@ -1324,5 +1412,20 @@ button {
 
   .plan-tabs {
     overflow-x: auto;
+  }
+
+  .import-drop,
+  .import-match-row {
+    grid-template-columns: 1fr;
+  }
+
+  .import-match-row {
+    flex-direction: column;
+  }
+
+  .import-drop,
+  .import-match-row,
+  .import-toolbar {
+    align-items: stretch;
   }
 }
