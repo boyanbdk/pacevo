@@ -9,6 +9,7 @@ import {
 import { vdotFromRace, pacesFromVdot, riegelPredict, tanakaHrmax, hrZones } from "./vdot";
 import { classifyRunner, resolveSafeLevel } from "./classify-runner";
 import { selectWorkoutRecipe } from "./select-workout-recipe";
+import { formatWeekWarning } from "./warnings";
 
 // ---------------------------------------------------------------------------
 // Constants (same values as build_plan.py, same source citations)
@@ -567,19 +568,22 @@ function validatePlan(weeks: TrainingWeek[], volumes: number[]): string[] {
       const lrPct = long_run_km / total_km;
       if (lrPct > 0.34) {
         warnings.push(
-          `Week ${week_index}: long run is ${Math.round(lrPct * 100)}% of weekly volume. Shorten it or add easy distance elsewhere so the week is less dependent on one run.`
+          formatWeekWarning(
+            week_index,
+            `long run is ${Math.round(lrPct * 100)}% of weekly volume. Shorten it or add easy distance elsewhere so the week is less dependent on one run.`
+          )
         );
       }
     }
 
     if (acwr !== null && acwr > 1.3) {
-      warnings.push(`Week ${week_index}: training load rises faster than the recent four-week baseline. Keep this week controlled or reduce volume.`);
+      warnings.push(formatWeekWarning(week_index, "training load rises faster than the recent four-week baseline. Keep this week controlled or reduce volume."));
     }
 
     if (phase !== "taper") {
       deloadGap = is_deload ? 0 : deloadGap + 1;
       if (deloadGap > 5) {
-        warnings.push(`Week ${week_index}: ${deloadGap} consecutive load weeks without a cutback. Keep this week conservative or move an easy run to rest.`);
+        warnings.push(formatWeekWarning(week_index, `${deloadGap} consecutive load weeks without a cutback. Keep this week conservative or move an easy run to rest.`));
       }
     }
   }

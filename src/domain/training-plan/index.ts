@@ -5,7 +5,9 @@ export { renderIntensity, RECOMMENDED_MODE, RPE_RANGES, HR_ZONE_LABELS, HR_LAG_W
 export { selectWorkoutRecipe } from "./select-workout-recipe";
 export { calculateWorkoutPreferences, latestFeedbackForSession, preferenceBiasForRecipe } from "./workout-preferences";
 export { findSimilarWorkouts } from "./find-similar-workouts";
+export { formatWeekWarning, parsePlanWarning, splitPlanWarnings } from "./warnings";
 export type { IntensityDisplay, SecondaryItem } from "./training-intensity";
 export type { WorkoutFeedback, WorkoutFeedbackReason, WorkoutFeedbackType, UserWorkoutPreference } from "./workout-preferences";
 export type { SimilarWorkoutOption } from "./find-similar-workouts";
+export type { ParsedPlanWarning } from "./warnings";
 export type { PlanInputs, TrainingPlan, TrainingWeek, PlannedSession, Paces, HrZones, PlanMeta, GoalRace, Level, Phase, SessionType, IntensityMode } from "./types";

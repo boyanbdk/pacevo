@@ -1313,6 +1313,12 @@ button {
   gap: 6px;
 }
 
+.week-warning-list {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+
 .week-session-row {
   display: flex;
   align-items: center;

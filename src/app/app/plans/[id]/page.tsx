@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatPace } from "@/domain/training-plan";
 import { runAdaptations } from "@/domain/training-plan/adapt-plan";
 import { matchImportedActivities, parseActivityFile, type ActivityMatch, type ImportedActivity } from "@/domain/training-plan/activity-import";
+import { splitPlanWarnings } from "@/domain/training-plan/warnings";
 import type { TrainingWeek } from "@/domain/training-plan/types";
 import { formatShortPlanDate, formatWeekRange, formatWeekdayDate, parsePlanDate } from "@/lib/plan-dates";
 import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
@@ -386,6 +387,7 @@ function WeekCard({
   planId,
   active,
   loggedCount,
+  warnings = [],
   onClick,
 }: {
   week: TrainingWeek;
@@ -393,6 +395,7 @@ function WeekCard({
   planId: string;
   active: boolean;
   loggedCount: number;
+  warnings?: string[];
   onClick: () => void;
 }) {
   const totalSessions = week.sessions.filter((s) => s.type !== "rest").length;
@@ -436,30 +439,42 @@ function WeekCard({
         })}
       </div>
       {active && (
-        <div className="week-session-list">
-          {week.sessions
-            .filter((s) => s.type !== "rest")
-            .map((s) => (
-              <Link
-                key={s.day_index}
-                href={`/app/plans/${planId}/sessions/${weekIndex}-${s.day_index}`}
-                className="week-session-row"
-              >
-                <span
-                  className="week-session-dot"
-                  style={{ background: SESSION_COLORS[s.type] ?? "var(--muted)" }}
-                />
-                <span className="week-session-main">
-                  <strong>{formatWeekdayDate(s.date)}</strong>
-                  <span>
-                    {SESSION_LABELS[s.type]}
-                    {s.target_km ? ` · ${s.target_km.toFixed(1)} km` : ""}
+        <>
+          <div className="week-session-list">
+            {week.sessions
+              .filter((s) => s.type !== "rest")
+              .map((s) => (
+                <Link
+                  key={s.day_index}
+                  href={`/app/plans/${planId}/sessions/${weekIndex}-${s.day_index}`}
+                  className="week-session-row"
+                >
+                  <span
+                    className="week-session-dot"
+                    style={{ background: SESSION_COLORS[s.type] ?? "var(--muted)" }}
+                  />
+                  <span className="week-session-main">
+                    <strong>{formatWeekdayDate(s.date)}</strong>
+                    <span>
+                      {SESSION_LABELS[s.type]}
+                      {s.target_km ? ` · ${s.target_km.toFixed(1)} km` : ""}
+                    </span>
                   </span>
-                </span>
-                <ChevronRight size={14} style={{ marginLeft: "auto", flexShrink: 0 }} />
-              </Link>
-            ))}
-        </div>
+                  <ChevronRight size={14} style={{ marginLeft: "auto", flexShrink: 0 }} />
+                </Link>
+              ))}
+          </div>
+          {warnings.length > 0 && (
+            <div className="week-warning-list">
+              {warnings.map((warning, index) => (
+                <div key={index} className="plan-warn">
+                  <Target size={14} />
+                  <span>{warning}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </button>
   );
@@ -755,6 +770,8 @@ export default function PlanDetailPage() {
   if (!plan) notFound();
 
   const week = plan.plan.weeks[weekIndex];
+  const { planWarnings, warningsByWeekNumber } = splitPlanWarnings(plan.plan.warnings);
+  const activeWeekWarnings = warningsByWeekNumber[weekIndex + 1] ?? [];
 
   function loggedCountForWeek(wi: number): number {
     return countLoggedSessions(plan!.completedSessions, wi);
@@ -810,6 +827,16 @@ export default function PlanDetailPage() {
       </div>
 
       <PlanSummary plan={plan} />
+      {planWarnings.length > 0 && (
+        <div className="plan-warnings panel" style={{ marginBottom: 18 }}>
+          {planWarnings.map((warning, index) => (
+            <div key={index} className="plan-warn">
+              <Target size={14} />
+              <span>{warning}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Tab bar */}
       <div className="plan-tabs" style={{ marginBottom: 18 }}>
@@ -890,9 +917,9 @@ export default function PlanDetailPage() {
                 </div>
               </div>
               <CalendarGrid plan={plan} weekIndex={weekIndex} />
-              {plan.plan.warnings.length > 0 && (
+              {activeWeekWarnings.length > 0 && (
                 <div className="plan-warnings panel" style={{ marginTop: 16 }}>
-                  {plan.plan.warnings.map((w, i) => (
+                  {activeWeekWarnings.map((w, i) => (
                     <div key={i} className="plan-warn">
                       <Target size={14} />
                       <span>{w}</span>
@@ -913,7 +940,8 @@ export default function PlanDetailPage() {
                 planId={plan.id}
                 active={i === weekIndex}
                 loggedCount={loggedCountForWeek(i)}
-                onClick={() => setWeekIndex(i === weekIndex ? -1 : i)}
+                warnings={warningsByWeekNumber[i + 1] ?? []}
+                onClick={() => setWeekIndex(i)}
               />
             ))}
           </div>
