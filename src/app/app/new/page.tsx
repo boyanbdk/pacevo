@@ -8,18 +8,14 @@ import { ExportMenu } from "@/components/ExportMenu";
 import { parseWorkoutText } from "@/domain/parser";
 import { tailorWorkout } from "@/domain/run-tailor";
 import type { AdjustedWorkout, DisplayStyle, ParsedWorkout, TailoringInputs, WorkoutAdjustment } from "@/domain/workout-schema";
+import { DEMO_WORKOUTS } from "@/lib/demo-workouts";
 import { getSettings, saveSettings, saveWorkout } from "@/lib/storage";
-
-const sampleWorkout = `Track intervals
-Warm-up 2 km
-8 x 800 m @ 4:00, window 3:50-4:10, 90 sec walk recovery
-Cool down 1.5 km`;
 
 export default function NewWorkoutPage() {
   const router = useRouter();
   const cardRef = useRef<HTMLDivElement>(null);
   const settings = getSettings();
-  const [sourceText, setSourceText] = useState(sampleWorkout);
+  const [sourceText, setSourceText] = useState(DEMO_WORKOUTS[0].text);
   const [imagePreview, setImagePreview] = useState<string | undefined>();
   const [imageName, setImageName] = useState<string | undefined>();
   const [parsed, setParsed] = useState<ParsedWorkout | null>(null);
@@ -107,7 +103,21 @@ export default function NewWorkoutPage() {
           <section className="panel stack">
             <h2>1. Source</h2>
             <div className="field">
-              <label htmlFor="source">Workout text</label>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <label htmlFor="source">Workout text</label>
+                <div className="button-row" style={{ gap: 4 }}>
+                  {DEMO_WORKOUTS.map((demo) => (
+                    <button
+                      key={demo.label}
+                      className="button ghost compact"
+                      type="button"
+                      onClick={() => { setSourceText(demo.text); setParsed(null); setAdjusted(null); }}
+                    >
+                      {demo.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <textarea className="textarea" id="source" value={sourceText} onChange={(event) => setSourceText(event.target.value)} />
             </div>
             {imagePreview && (

@@ -1,53 +1,89 @@
 # workout
 
-Tools to optimize and adapt workouts.
+Tools to optimise and adapt running workouts.
 
 ## Run Tailor Web App
 
-This repo now includes a local Next.js MVP for Run Tailor.
+A local Next.js app for tailoring individual workouts and building multi-week training plans.
+
+### Running locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-The app includes:
+Open [http://localhost:3000](http://localhost:3000). Register a local account to get started.
 
-- Local login/register gate for the MVP.
-- Dashboard, new-workout flow, saved workout detail, and settings pages.
-- Paste-based workout extraction with review flags.
-- TypeScript parity port of the current running interval readiness logic.
-- Satisfaction-loop regeneration with revision history.
-- Local workout persistence in the browser.
-- PNG, PDF, and DOCX export actions for the adjusted workout card.
-
-Verification:
+### Verification
 
 ```bash
-npm test
-npm run build
+npm test          # unit and domain tests
+npm run build     # production build
 npm audit --omit=dev
 ```
 
-## Running
+### What the app includes
 
-The `running/` folder contains a reusable workflow for tailoring running workouts from screenshots or text. The goal is to preserve the intent of the original workout while adjusting the actual execution based on:
+#### Workout tailoring
 
-- Easy/warm-up and cool-down paces.
-- Walking rest speed when the workout has rests.
-- How good the runner feels that day, from `1-10`.
-- Desired push level: `easy`, `normal`, or `hard`.
-- Output format: treadmill time-based, treadmill distance-based, or a general running plan.
+- Paste a workout or upload a screenshot, then review the extracted structure.
+- Set tailoring inputs: run context (free run or treadmill), output format, easy pace, cool-down pace, walking rest pace, feeling (1–10), and push level (easy / normal / hard).
+- Generate an adjusted workout with correct speeds and paces for each step.
+- Satisfaction loop: describe what to change and regenerate.
+- Save workouts and view revision history.
+- Export the adjusted workout card as PNG, PDF, or DOCX.
+- Four built-in demo workouts to try immediately: 800 m intervals, tempo 3 km, 400 m repeats, and a block long run.
 
-The main skill lives in `running/run-tailor/`. It asks the required inputs before producing an adjusted workout, then returns each running segment with both speed and pace, for example `12.0 km/h (5:00/km)`.
+#### Training plan generator
+
+- Build a personalised multi-week race-prep plan from a five-step onboarding form.
+- Supports goals: 5K, 10K, half marathon, marathon.
+- Inputs: goal date, current weekly km, longest recent run, recent race time (for VDOT), constraints (days/week, session cap, long-run day, surface), and health data (age, HR, injury flags).
+- Level (beginner / intermediate / advanced) is inferred from your inputs, not chosen.
+- Plans follow VDOT-based pacing, polarised 80/20 intensity distribution, structured deload weeks, and evidence-based taper.
+- Calendar view on desktop, week list on mobile; each session links to a detail screen with rationale and pace targets.
+- Log sessions manually after each run.
+- Import completed runs from GPX or TCX files (Garmin, Strava, Coros, Suunto, Apple Health exports). Same-date matches are applied automatically; date mismatches surface as suggestions.
+- Adaptive layer: after logging, the plan checks ACWR load ratios, resting HR trends, aerobic deficit, and missed sessions; it creates a new plan version when an adjustment is needed, with a plain-English explanation for every change.
+- Full version history — prior weeks are never mutated.
+- Export the current plan as PNG (week card), PDF (full plan), or DOCX (structured tables).
+- Archive and restore plans from the plans list.
+
+### Pages
+
+| Path | Description |
+|------|-------------|
+| `/login` `/register` | Local auth |
+| `/app` | Dashboard — active plan + recent workouts |
+| `/app/new` | New workout flow |
+| `/app/workouts/[id]` | Saved workout detail, regenerate, export |
+| `/app/plans` | All training plans |
+| `/app/plans/new` | Plan onboarding form |
+| `/app/plans/[id]` | Plan calendar, session logging, imports, adaptations |
+| `/app/plans/[id]/sessions/[sessionId]` | Individual session detail |
+| `/app/settings` | Default paces and display preferences |
+
+---
+
+## Running skill
+
+`running/run-tailor/` contains the original Claude skill for tailoring workouts from screenshots or text. The web app is built on top of the same algorithm, ported to TypeScript in `src/domain/`.
+
+## Training plan generator skill
+
+`running/training-plan-generator/` contains the standalone Python skill for generating training plans.
+
+```bash
+python running/training-plan-generator/scripts/build_plan.py < inputs.json > plan.json
+```
+
+Schemas live in `running/training-plan-generator/schemas/`. Tests:
+
+```bash
+python -m pytest running/training-plan-generator/tests/
+```
 
 ## Examples
 
-`running/examples/` stores complete sample conversions. Each file shows:
-
-- The original workout.
-- The user inputs.
-- The adjustment logic.
-- The final adjusted workout.
-
-These examples cover intervals, tempo work, and long-run block workouts.
+`running/examples/` stores complete sample conversions showing the original workout, user inputs, adjustment logic, and final output. These are also the source of the demo workouts in the app.
