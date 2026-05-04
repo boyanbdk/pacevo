@@ -385,6 +385,43 @@ function CalendarGrid({ plan, weekIndex }: { plan: SavedPlan; weekIndex: number 
   );
 }
 
+function WeekCalendarSection({
+  plan,
+  weekIndex,
+  active,
+  warnings,
+  registerRef,
+}: {
+  plan: SavedPlan;
+  weekIndex: number;
+  active: boolean;
+  warnings: string[];
+  registerRef?: (node: HTMLElement | null) => void;
+}) {
+  const week = plan.plan.weeks[weekIndex];
+  return (
+    <section className={`continuous-week${active ? " active" : ""}`} ref={registerRef}>
+      <div className="continuous-week-header">
+        <div>
+          <span className="card-kicker">{weekLabel(week)}</span>
+          <h3>Week {weekIndex + 1} · {formatWeekRange(week)} · {week.total_km.toFixed(0)} km</h3>
+        </div>
+      </div>
+      <CalendarGrid plan={plan} weekIndex={weekIndex} />
+      {warnings.length > 0 && (
+        <div className="plan-warnings panel continuous-week-warnings">
+          {warnings.map((warning, index) => (
+            <div key={index} className="plan-warn">
+              <Target size={14} />
+              <span>{warning}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Week card
 // ---------------------------------------------------------------------------
@@ -771,7 +808,9 @@ export default function PlanDetailPage() {
   const [selectedEvent, setSelectedEvent] = useState<AdaptationEvent | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [settings, setSettings] = useState<UserSettings>(getSettings());
-  const calRef = useRef<HTMLDivElement | null>(null);
+  const weekSectionRefs = useRef<Record<number, HTMLElement | null>>({});
+  const mobileWeekRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const initialScrollDone = useRef(false);
 
   useEffect(() => {
     const p = getPlan(id);
@@ -782,15 +821,60 @@ export default function PlanDetailPage() {
     setLoaded(true);
   }, [id]);
 
+  useEffect(() => {
+    initialScrollDone.current = false;
+  }, [id]);
+
+  useEffect(() => {
+    if (!plan || tab !== "plan" || initialScrollDone.current) return;
+    initialScrollDone.current = true;
+    requestAnimationFrame(() => scrollToWeek(weekIndex, "auto"));
+  }, [plan, tab, weekIndex]);
+
+  useEffect(() => {
+    if (!plan || tab !== "plan") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        const nextIndex = Number((visible?.target as HTMLElement | undefined)?.dataset.weekIndex);
+        if (Number.isInteger(nextIndex)) {
+          setWeekIndex(nextIndex);
+        }
+      },
+      { rootMargin: "-20% 0px -55% 0px", threshold: [0.2, 0.45, 0.7] },
+    );
+
+    plan.plan.weeks.forEach((_, i) => {
+      const desktopNode = weekSectionRefs.current[i];
+      const mobileNode = mobileWeekRefs.current[i];
+      if (desktopNode) observer.observe(desktopNode);
+      if (mobileNode) observer.observe(mobileNode);
+    });
+
+    return () => observer.disconnect();
+  }, [plan, tab]);
+
   if (!loaded) return null;
   if (!plan) notFound();
 
   const week = plan.plan.weeks[weekIndex];
   const { planWarnings, warningsByWeekNumber } = splitPlanWarnings(plan.plan.warnings);
-  const activeWeekWarnings = warningsByWeekNumber[weekIndex + 1] ?? [];
-
   function loggedCountForWeek(wi: number): number {
     return countLoggedSessions(plan!.completedSessions, wi);
+  }
+
+  function scrollToWeek(nextWeekIndex: number, behavior: ScrollBehavior = "smooth") {
+    const desktopTarget = weekSectionRefs.current[nextWeekIndex];
+    const mobileTarget = mobileWeekRefs.current[nextWeekIndex];
+    const target = window.matchMedia("(max-width: 900px)").matches ? mobileTarget : desktopTarget;
+    target?.scrollIntoView({ behavior, block: "start" });
+  }
+
+  function selectWeek(nextWeekIndex: number) {
+    setWeekIndex(nextWeekIndex);
+    requestAnimationFrame(() => scrollToWeek(nextWeekIndex));
   }
 
   function handleArchive() {
@@ -822,7 +906,10 @@ export default function PlanDetailPage() {
           <button
             className="button ghost"
             title="Export week as PNG"
-            onClick={() => calRef.current && exportPlanWeekImage(calRef.current, plan.plan.meta.goal_race, weekIndex)}
+            onClick={() => {
+              const node = weekSectionRefs.current[weekIndex] ?? mobileWeekRefs.current[weekIndex];
+              if (node) exportPlanWeekImage(node, plan.plan.meta.goal_race, weekIndex);
+            }}
           >
             <FileImage size={16} />
             PNG
@@ -907,58 +994,73 @@ export default function PlanDetailPage() {
                     planId={plan.id}
                     active={i === weekIndex}
                     loggedCount={loggedCountForWeek(i)}
-                    onClick={() => setWeekIndex(i)}
+                    onClick={() => selectWeek(i)}
                   />
                 ))}
               </div>
             </aside>
 
-            <section className="plan-cal-section" ref={calRef}>
+            <section className="plan-cal-section">
               <div className="plan-cal-header">
                 <div>
-                  <span className="card-kicker">{weekLabel(week)}</span>
-                  <h3>Week {weekIndex + 1} · {formatWeekRange(week)} · {week.total_km.toFixed(0)} km</h3>
+                  <span className="card-kicker">Continuous calendar</span>
+                  <h3>Week {weekIndex + 1} focused · {formatWeekRange(week)}</h3>
                 </div>
-                <div className="button-row">
-                  <button
-                    className="button ghost"
-                    disabled={weekIndex === 0}
-                    onClick={() => setWeekIndex((w) => w - 1)}
-                  >‹</button>
-                  <button
-                    className="button ghost"
-                    disabled={weekIndex === plan.plan.weeks.length - 1}
-                    onClick={() => setWeekIndex((w) => w + 1)}
-                  >›</button>
-                </div>
+                {plan.plan.weeks.length > 12 && (
+                  <label className="week-jump">
+                    <span>Jump</span>
+                    <select
+                      className="select"
+                      value={weekIndex}
+                      onChange={(event) => selectWeek(Number(event.target.value))}
+                    >
+                      {plan.plan.weeks.map((w, i) => (
+                        <option key={i} value={i}>
+                          Week {i + 1} · {formatWeekRange(w)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
               </div>
-              <CalendarGrid plan={plan} weekIndex={weekIndex} />
-              {activeWeekWarnings.length > 0 && (
-                <div className="plan-warnings panel" style={{ marginTop: 16 }}>
-                  {activeWeekWarnings.map((w, i) => (
-                    <div key={i} className="plan-warn">
-                      <Target size={14} />
-                      <span>{w}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <div className="continuous-calendar">
+                {plan.plan.weeks.map((_, i) => (
+                  <WeekCalendarSection
+                    key={i}
+                    plan={plan}
+                    weekIndex={i}
+                    active={i === weekIndex}
+                    warnings={warningsByWeekNumber[i + 1] ?? []}
+                    registerRef={(node) => {
+                      if (node) node.dataset.weekIndex = String(i);
+                      weekSectionRefs.current[i] = node;
+                    }}
+                  />
+                ))}
+              </div>
             </section>
           </div>
 
           {/* Mobile week list */}
           <div className="plan-week-mobile">
             {plan.plan.weeks.map((w, i) => (
-              <WeekCard
+              <div
                 key={i}
-                week={w}
-                weekIndex={i}
-                planId={plan.id}
-                active={i === weekIndex}
-                loggedCount={loggedCountForWeek(i)}
-                warnings={warningsByWeekNumber[i + 1] ?? []}
-                onClick={() => setWeekIndex(i)}
-              />
+                ref={(node) => {
+                  if (node) node.dataset.weekIndex = String(i);
+                  mobileWeekRefs.current[i] = node;
+                }}
+              >
+                <WeekCard
+                  week={w}
+                  weekIndex={i}
+                  planId={plan.id}
+                  active={i === weekIndex}
+                  loggedCount={loggedCountForWeek(i)}
+                  warnings={warningsByWeekNumber[i + 1] ?? []}
+                  onClick={() => selectWeek(i)}
+                />
+              </div>
             ))}
           </div>
         </>

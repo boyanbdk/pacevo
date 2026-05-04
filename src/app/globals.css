@@ -1169,19 +1169,84 @@ button {
 }
 
 .plan-cal-section {
-  /* full width on desktop */
+  min-width: 0;
 }
 
 .plan-cal-header {
+  position: sticky;
+  top: 0;
+  z-index: 12;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  gap: 14px;
+  padding: 0 0 12px;
   margin-bottom: 14px;
+  background: var(--bg);
 }
 
 .plan-cal-header h3 {
   margin: 4px 0 0;
   font-size: 20px;
+}
+
+.week-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.week-jump .select {
+  width: 190px;
+  min-height: 36px;
+  padding: 0 34px 0 10px;
+  font-size: 13px;
+  text-transform: none;
+}
+
+.continuous-calendar {
+  display: grid;
+  gap: 16px;
+}
+
+.continuous-week {
+  scroll-margin-top: 86px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.018);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.continuous-week.active {
+  border-color: rgba(40, 210, 174, 0.5);
+  background: rgba(40, 210, 174, 0.035);
+}
+
+.continuous-week-header {
+  position: sticky;
+  top: 58px;
+  z-index: 8;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(23, 29, 33, 0.96);
+  backdrop-filter: blur(10px);
+}
+
+.continuous-week-header h3 {
+  margin: 3px 0 0;
+  font-size: 17px;
+}
+
+.continuous-week .cal-grid {
+  padding: 12px;
+}
+
+.continuous-week-warnings {
+  margin: 0 12px 12px;
 }
 
 /* 7-column calendar grid */
