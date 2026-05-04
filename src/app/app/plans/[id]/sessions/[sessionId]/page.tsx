@@ -21,6 +21,7 @@ import { runAdaptations } from "@/domain/training-plan/adapt-plan";
 import { findSimilarWorkouts, type SimilarWorkoutOption } from "@/domain/training-plan/find-similar-workouts";
 import type { IntensityMode, PlannedSession, TrainingWeek } from "@/domain/training-plan/types";
 import type { WorkoutFeedbackReason, WorkoutFeedbackType } from "@/domain/training-plan/workout-preferences";
+import { formatFullPlanDate, parsePlanDate } from "@/lib/plan-dates";
 import type { CompletedSession, SavedPlan } from "@/lib/plan-storage";
 import {
   applyAdaptation,
@@ -70,8 +71,6 @@ const SESSION_COLORS: Record<string, string> = {
 const PHASE_LABELS: Record<string, string> = {
   base: "Base", build: "Build", peak: "Peak", taper: "Taper",
 };
-
-const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 const MODE_LABELS: { value: IntensityMode; label: string }[] = [
   { value: "pace", label: "Pace" },
@@ -158,7 +157,7 @@ function LogSessionForm({
 
       const refreshed = getPlan(plan.id)!;
       const today = new Date();
-      const startDate = new Date(refreshed.plan.meta.start_date);
+      const startDate = parsePlanDate(refreshed.plan.meta.start_date);
       const currentWeekIndex = Math.min(
         Math.max(0, Math.floor((today.getTime() - startDate.getTime()) / (7 * 86400000))),
         refreshed.plan.weeks.length - 1,
@@ -551,7 +550,7 @@ export default function SessionDetailPage() {
             {existing && <span className="session-logged-badge">Logged</span>}
           </h1>
           <p>
-            {DAY_NAMES[session.day_index - 1]} · Week {weekIndex + 1} · {PHASE_LABELS[week.phase]}
+            {formatFullPlanDate(session.date)} · Week {weekIndex + 1} · {PHASE_LABELS[week.phase]}
           </p>
         </div>
       </div>

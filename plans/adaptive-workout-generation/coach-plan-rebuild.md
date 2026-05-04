@@ -145,6 +145,8 @@ Likely files:
 
 ### Phase 2: Calendar And Date Visibility
 
+Status: implemented on May 4, 2026.
+
 Goal: make the plan inspectable by date, not only by week number.
 
 Tasks:
@@ -169,6 +171,11 @@ Likely files:
 - `src/app/app/plans/[id]/sessions/[sessionId]/page.tsx`
 - `src/app/globals.css`
 - `src/lib/export.ts`
+
+Verification added:
+
+- `src/lib/plan-dates.test.ts` covers local plan-date parsing plus session and week-range labels.
+- `npm test` and `npm run build` passed after implementation.
 
 ### Phase 3: User-Facing Copy Cleanup
 

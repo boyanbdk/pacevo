@@ -1163,10 +1163,21 @@ button {
 }
 
 .cal-day {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
   font-size: 11px;
   font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
+}
+
+.cal-date {
+  font-size: 11px;
+  color: var(--text);
+  text-transform: none;
+  white-space: nowrap;
 }
 
 .cal-session-type {
@@ -1216,6 +1227,12 @@ button {
   margin-top: 2px;
 }
 
+.week-card-date {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .week-card-stats {
   display: flex;
   align-items: center;
@@ -1251,6 +1268,16 @@ button {
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.03);
   font-size: 13px;
+}
+
+.week-session-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.week-session-main span {
+  color: var(--muted);
 }
 
 .week-session-dot {

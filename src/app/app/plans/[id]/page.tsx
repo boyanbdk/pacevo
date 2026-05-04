@@ -8,6 +8,7 @@ import { formatPace } from "@/domain/training-plan";
 import { runAdaptations } from "@/domain/training-plan/adapt-plan";
 import { matchImportedActivities, parseActivityFile, type ActivityMatch, type ImportedActivity } from "@/domain/training-plan/activity-import";
 import type { TrainingWeek } from "@/domain/training-plan/types";
+import { formatShortPlanDate, formatWeekRange, formatWeekdayDate, parsePlanDate } from "@/lib/plan-dates";
 import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
 import { applyAdaptation, getPlan, getWorkoutPreferences, logSession, updatePlanStatus } from "@/lib/plan-storage";
 import { exportPlanDocx, exportPlanPdf, exportPlanWeekImage } from "@/lib/export";
@@ -97,7 +98,7 @@ function countLoggedSessions(sessions: CompletedSession[], weekIndex?: number): 
 
 function currentWeekIndexForPlan(plan: SavedPlan): number {
   const today = new Date();
-  const startDate = new Date(plan.plan.meta.start_date);
+  const startDate = parsePlanDate(plan.plan.meta.start_date);
   return Math.min(
     Math.max(0, Math.floor((today.getTime() - startDate.getTime()) / (7 * 86400000))),
     plan.plan.weeks.length - 1,
@@ -288,7 +289,7 @@ function ImportedActivityPanel({
                     </div>
                     {session && (
                       <div className="import-match-target">
-                        Week {match.weekIndex! + 1} · {dayAbbr(session.day_index)} · {SESSION_LABELS[session.type]}
+                        Week {match.weekIndex! + 1} · {formatWeekdayDate(session.date)} · {SESSION_LABELS[session.type]}
                         {session.target_km ? ` · ${session.target_km.toFixed(1)} km planned` : ""}
                       </div>
                     )}
@@ -337,6 +338,7 @@ function CalendarGrid({ plan, weekIndex }: { plan: SavedPlan; weekIndex: number 
       {DAY_ABBRS.map((day, di) => {
         const dayIndex = di + 1;
         const session = week.sessions.find((s) => s.day_index === dayIndex);
+        const dateLabel = session ? formatShortPlanDate(session.date) : "";
         const logged = plan.completedSessions.find(
           (c) => c.weekIndex === weekIndex && c.dayIndex === dayIndex,
         );
@@ -344,7 +346,10 @@ function CalendarGrid({ plan, weekIndex }: { plan: SavedPlan; weekIndex: number 
         if (!session || session.type === "rest") {
           return (
             <div key={di} className="cal-cell rest">
-              <span className="cal-day">{day}</span>
+              <span className="cal-day">
+                <span>{day}</span>
+                {dateLabel && <span className="cal-date">{dateLabel}</span>}
+              </span>
               <span className="cal-rest-label">Rest</span>
             </div>
           );
@@ -357,7 +362,10 @@ function CalendarGrid({ plan, weekIndex }: { plan: SavedPlan; weekIndex: number 
             className={`cal-cell active-session${logged ? " logged" : ""}`}
             style={{ "--session-color": color } as React.CSSProperties}
           >
-            <span className="cal-day">{day}</span>
+            <span className="cal-day">
+              <span>{day}</span>
+              <span className="cal-date">{dateLabel}</span>
+            </span>
             <span className="cal-session-type">{SESSION_LABELS[session.type]}</span>
             <span className="cal-session-dist">{fmtDist(session.target_km)}</span>
             {logged && <span className="cal-logged-dot" />}
@@ -405,6 +413,7 @@ function WeekCard({
               </span>
             )}
           </div>
+          <div className="week-card-date">{formatWeekRange(week)}</div>
         </div>
         <div className="week-card-stats">
           <span>{week.total_km.toFixed(0)} km</span>
@@ -440,9 +449,12 @@ function WeekCard({
                   className="week-session-dot"
                   style={{ background: SESSION_COLORS[s.type] ?? "var(--muted)" }}
                 />
-                <span>
-                  <strong>{dayAbbr(s.day_index)}</strong> · {SESSION_LABELS[s.type]}
-                  {s.target_km ? ` · ${s.target_km.toFixed(1)} km` : ""}
+                <span className="week-session-main">
+                  <strong>{formatWeekdayDate(s.date)}</strong>
+                  <span>
+                    {SESSION_LABELS[s.type]}
+                    {s.target_km ? ` · ${s.target_km.toFixed(1)} km` : ""}
+                  </span>
                 </span>
                 <ChevronRight size={14} style={{ marginLeft: "auto", flexShrink: 0 }} />
               </Link>
@@ -467,7 +479,7 @@ function PlanSummary({ plan }: { plan: SavedPlan }) {
         <span className="muted">Goal</span>
         <h2>{GOAL_LABELS[meta.goal_race]}</h2>
         <span className="muted" style={{ fontSize: 13 }}>
-          {new Date(meta.goal_date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+          {formatShortPlanDate(meta.goal_date)}
         </span>
       </div>
       <div className="panel">
@@ -769,7 +781,7 @@ export default function PlanDetailPage() {
           </Link>
           <h1>{GOAL_LABELS[plan.plan.meta.goal_race]} plan</h1>
           <p>
-            Week {weekIndex + 1} of {plan.plan.weeks.length} · {PHASE_LABELS[week.phase]}
+            Week {weekIndex + 1} of {plan.plan.weeks.length} · {formatWeekRange(week)} · {PHASE_LABELS[week.phase]}
             {week.is_deload ? " · Deload" : ""}
           </p>
         </div>
@@ -862,7 +874,7 @@ export default function PlanDetailPage() {
               <div className="plan-cal-header">
                 <div>
                   <span className="card-kicker">{weekLabel(week)}</span>
-                  <h3>Week {weekIndex + 1} — {week.total_km.toFixed(0)} km</h3>
+                  <h3>Week {weekIndex + 1} · {formatWeekRange(week)} · {week.total_km.toFixed(0)} km</h3>
                 </div>
                 <div className="button-row">
                   <button

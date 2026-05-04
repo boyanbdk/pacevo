@@ -14,6 +14,7 @@ import { toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
 import type { AdjustedWorkout } from "@/domain/workout-schema";
 import type { TrainingPlan } from "@/domain/training-plan/types";
+import { formatPlanDate, formatWeekRange, formatWeekdayDate } from "@/lib/plan-dates";
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -107,8 +108,6 @@ const PLAN_GOAL_LABELS: Record<string, string> = {
   marathon: "Marathon",
 };
 
-const DAY_ABBRS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
 function fmtPace(s: number | null): string {
   if (s === null) return "—";
   const min = Math.floor(s / 60);
@@ -146,7 +145,7 @@ export function exportPlanPdf(plan: TrainingPlan) {
   pdf.setTextColor(201, 255, 64);
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(10);
-  const goalDate = new Date(plan.meta.goal_date).toLocaleDateString(undefined, {
+  const goalDate = formatPlanDate(plan.meta.goal_date, {
     month: "long", day: "numeric", year: "numeric",
   });
   pdf.text(
@@ -182,7 +181,7 @@ export function exportPlanPdf(plan: TrainingPlan) {
     pdf.setTextColor(245, 247, 242);
     const deloadLabel = week.is_deload ? " · Deload" : "";
     pdf.text(
-      `Week ${week.week_index + 1}  —  ${PLAN_PHASE_LABELS[week.phase]}${deloadLabel}  ·  ${week.total_km.toFixed(0)} km`,
+      `Week ${week.week_index + 1}  -  ${formatWeekRange(week)}  -  ${PLAN_PHASE_LABELS[week.phase]}${deloadLabel}  ·  ${week.total_km.toFixed(0)} km`,
       margin,
       y,
     );
@@ -197,7 +196,7 @@ export function exportPlanPdf(plan: TrainingPlan) {
       const paceStr = session.pace_low_s_km ? fmtPace(session.pace_low_s_km) : "";
       const detail = [distStr, paceStr].filter(Boolean).join(" · ");
       const label = PLAN_SESSION_LABELS[session.type] ?? session.type;
-      const line = `  ${DAY_ABBRS[session.day_index]}   ${label}${detail ? "   " + detail : ""}`;
+      const line = `  ${formatWeekdayDate(session.date)}   ${label}${detail ? "   " + detail : ""}`;
       pdf.text(line, margin, y);
       y += 12;
     }
@@ -209,7 +208,7 @@ export function exportPlanPdf(plan: TrainingPlan) {
 
 export async function exportPlanDocx(plan: TrainingPlan) {
   const goalLabel = PLAN_GOAL_LABELS[plan.meta.goal_race] ?? plan.meta.goal_race;
-  const goalDate = new Date(plan.meta.goal_date).toLocaleDateString(undefined, {
+  const goalDate = formatPlanDate(plan.meta.goal_date, {
     month: "long", day: "numeric", year: "numeric",
   });
 
@@ -243,7 +242,7 @@ export async function exportPlanDocx(plan: TrainingPlan) {
     const deloadLabel = week.is_deload ? " (Deload)" : "";
     children.push(
       new Paragraph({
-        text: `Week ${week.week_index + 1} — ${PLAN_PHASE_LABELS[week.phase]}${deloadLabel}   ${week.total_km.toFixed(0)} km`,
+        text: `Week ${week.week_index + 1} - ${formatWeekRange(week)} - ${PLAN_PHASE_LABELS[week.phase]}${deloadLabel}   ${week.total_km.toFixed(0)} km`,
         heading: HeadingLevel.HEADING_2,
         spacing: { before: 240 },
       }),
@@ -252,7 +251,7 @@ export async function exportPlanDocx(plan: TrainingPlan) {
     const rows = [
       new TableRow({
         tableHeader: true,
-        children: ["Day", "Session", "Distance", "Pace", "Notes"].map(
+        children: ["Date", "Session", "Distance", "Pace", "Notes"].map(
           (text) =>
             new TableCell({
               children: [new Paragraph({ children: [new TextRun({ text, bold: true })] })],
@@ -266,7 +265,7 @@ export async function exportPlanDocx(plan: TrainingPlan) {
           (session) =>
             new TableRow({
               children: [
-                new TableCell({ children: [new Paragraph(DAY_ABBRS[session.day_index])] }),
+                new TableCell({ children: [new Paragraph(formatWeekdayDate(session.date))] }),
                 new TableCell({ children: [new Paragraph(PLAN_SESSION_LABELS[session.type] ?? session.type)] }),
                 new TableCell({ children: [new Paragraph(session.target_km ? `${session.target_km.toFixed(1)} km` : "—")] }),
                 new TableCell({ children: [new Paragraph(session.pace_low_s_km ? fmtPace(session.pace_low_s_km) : "—")] }),
