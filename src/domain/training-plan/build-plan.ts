@@ -166,6 +166,10 @@ function buildVolumeCurve(
         const frac = 1.0 - (taperIndex / (taperCount - 1)) * (1.0 - TAPER_VOLUME_FACTOR);
         vol = round1(actualPeak * frac);
       }
+      const previous = volumes.at(-1);
+      if (previous !== undefined) {
+        vol = Math.min(vol, previous);
+      }
       volumes.push(vol);
     } else {
       loadWkCount++;
@@ -210,6 +214,23 @@ function restSession(di: number, d: Date): PlannedSession {
     main_set: null,
     cooldown: null,
   };
+}
+
+function scaleWeekVolume(week: TrainingWeek, nextTotalKm: number): void {
+  if (week.total_km <= 0 || nextTotalKm >= week.total_km) return;
+  const scaleFactor = nextTotalKm / week.total_km;
+
+  week.total_km = round1(nextTotalKm);
+  week.long_run_km = round1(week.long_run_km * scaleFactor);
+
+  for (const session of week.sessions) {
+    if (session.target_km) {
+      session.target_km = round1(session.target_km * scaleFactor);
+    }
+    if (session.target_duration_min) {
+      session.target_duration_min = Math.max(1, Math.round(session.target_duration_min * scaleFactor));
+    }
+  }
 }
 
 function buildRecipeSession(
@@ -529,6 +550,17 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
       curr.total_km = prev.total_km;
       volumes[i] = prev.total_km;
       curr.long_run_km = round1(Math.min(curr.total_km * 0.30, LONG_RUN_CAP_KM[goal_race]));
+    }
+  }
+
+  // 7c. Taper weeks should never rebound above the immediately preceding
+  // week after guardrail adjustments have been applied.
+  for (let i = 1; i < weeks.length; i++) {
+    const prev = weeks[i - 1];
+    const curr = weeks[i];
+    if (curr.phase === "taper" && curr.total_km > prev.total_km) {
+      scaleWeekVolume(curr, prev.total_km);
+      volumes[i] = curr.total_km;
     }
   }
 

@@ -77,6 +77,10 @@ const RULE_COLORS: Record<string, string> = {
 
 const DAY_ABBRS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+function dayAbbr(dayIndex: number): string {
+  return DAY_ABBRS[dayIndex - 1] ?? "Day";
+}
+
 function fmtDist(km: number | null): string {
   if (km === null || km === 0) return "—";
   return `${km.toFixed(1)} km`;
@@ -284,7 +288,7 @@ function ImportedActivityPanel({
                     </div>
                     {session && (
                       <div className="import-match-target">
-                        Week {match.weekIndex! + 1} · {DAY_ABBRS[session.day_index]} · {SESSION_LABELS[session.type]}
+                        Week {match.weekIndex! + 1} · {dayAbbr(session.day_index)} · {SESSION_LABELS[session.type]}
                         {session.target_km ? ` · ${session.target_km.toFixed(1)} km planned` : ""}
                       </div>
                     )}
@@ -331,9 +335,10 @@ function CalendarGrid({ plan, weekIndex }: { plan: SavedPlan; weekIndex: number 
   return (
     <div className="cal-grid">
       {DAY_ABBRS.map((day, di) => {
-        const session = week.sessions.find((s) => s.day_index === di);
+        const dayIndex = di + 1;
+        const session = week.sessions.find((s) => s.day_index === dayIndex);
         const logged = plan.completedSessions.find(
-          (c) => c.weekIndex === weekIndex && c.dayIndex === di,
+          (c) => c.weekIndex === weekIndex && c.dayIndex === dayIndex,
         );
 
         if (!session || session.type === "rest") {
@@ -348,7 +353,7 @@ function CalendarGrid({ plan, weekIndex }: { plan: SavedPlan; weekIndex: number 
         return (
           <Link
             key={di}
-            href={`/app/plans/${id}/sessions/${weekIndex}-${di}`}
+            href={`/app/plans/${id}/sessions/${weekIndex}-${dayIndex}`}
             className={`cal-cell active-session${logged ? " logged" : ""}`}
             style={{ "--session-color": color } as React.CSSProperties}
           >
@@ -408,7 +413,7 @@ function WeekCard({
       </div>
       <div className="week-session-strip">
         {DAY_ABBRS.map((_, di) => {
-          const session = week.sessions.find((s) => s.day_index === di);
+          const session = week.sessions.find((s) => s.day_index === di + 1);
           const type = session?.type ?? "rest";
           const color = SESSION_COLORS[type] ?? "var(--line)";
           return (
@@ -436,7 +441,7 @@ function WeekCard({
                   style={{ background: SESSION_COLORS[s.type] ?? "var(--muted)" }}
                 />
                 <span>
-                  <strong>{DAY_ABBRS[s.day_index]}</strong> · {SESSION_LABELS[s.type]}
+                  <strong>{dayAbbr(s.day_index)}</strong> · {SESSION_LABELS[s.type]}
                   {s.target_km ? ` · ${s.target_km.toFixed(1)} km` : ""}
                 </span>
                 <ChevronRight size={14} style={{ marginLeft: "auto", flexShrink: 0 }} />
@@ -574,14 +579,14 @@ function describePlanDiff(plan: SavedPlan, event: AdaptationEvent): string[] {
 
       if (typeChanged) {
         changes.push(
-          `Week ${nextWeek.week_index + 1} ${DAY_ABBRS[nextSession.day_index]}: ${SESSION_LABELS[prevSession.type]} → ${SESSION_LABELS[nextSession.type]}.`,
+          `Week ${nextWeek.week_index + 1} ${dayAbbr(nextSession.day_index)}: ${SESSION_LABELS[prevSession.type]} → ${SESSION_LABELS[nextSession.type]}.`,
         );
       } else if (distanceChanged) {
         changes.push(
-          `Week ${nextWeek.week_index + 1} ${DAY_ABBRS[nextSession.day_index]}: ${fmtDist(prevSession.target_km)} → ${fmtDist(nextSession.target_km)}.`,
+          `Week ${nextWeek.week_index + 1} ${dayAbbr(nextSession.day_index)}: ${fmtDist(prevSession.target_km)} → ${fmtDist(nextSession.target_km)}.`,
         );
       } else if (paceChanged) {
-        changes.push(`Week ${nextWeek.week_index + 1} ${DAY_ABBRS[nextSession.day_index]}: target pace updated.`);
+        changes.push(`Week ${nextWeek.week_index + 1} ${dayAbbr(nextSession.day_index)}: target pace updated.`);
       }
 
       if (changes.length >= 6) return changes;

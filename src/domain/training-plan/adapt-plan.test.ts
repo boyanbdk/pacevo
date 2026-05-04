@@ -4,7 +4,7 @@
 //   - Marking an injury inserts cross-training or rest for the flag duration.
 //   - Every adaptation explanation is under 200 chars.
 
-import { test, expect } from "vitest";
+import { afterEach, test, expect, vi } from "vitest";
 import { buildPlan } from "./build-plan";
 import {
   checkAerobicDeficit,
@@ -19,6 +19,10 @@ import { selectWorkoutRecipe } from "./select-workout-recipe";
 import type { CompletedSession } from "@/lib/plan-storage";
 import type { PlanInputs } from "./types";
 import type { UserWorkoutPreference } from "./workout-preferences";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 // ---------------------------------------------------------------------------
 // Fixture: build a real plan to run rules against
@@ -240,6 +244,59 @@ test("ACWR_CAP fires when projected ACWR exceeds 1.3", () => {
     }
   }
   // May not fire if plan is short; that's acceptable
+});
+
+// ---------------------------------------------------------------------------
+// MISSED_SESSION
+// ---------------------------------------------------------------------------
+
+test("MISSED_SESSION does not fire for sessions scheduled today or later", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-05-04T12:00:00+03:00"));
+
+  const plan = buildPlan({
+    ...BASE_INPUTS,
+    goal_date: "2026-07-20",
+    days_per_week: 5,
+    long_run_day: "saturday",
+  });
+
+  const result = checkMissedSession(plan, [], 0);
+
+  expect(plan.weeks[0].sessions.some((session) => session.date === "2026-05-04")).toBe(true);
+  expect(result).toBeNull();
+});
+
+test("MISSED_SESSION moves full session content without stale recipe metadata", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-05-06T12:00:00+03:00"));
+
+  const plan = buildPlan({
+    ...BASE_INPUTS,
+    goal_date: "2026-07-20",
+    days_per_week: 5,
+    long_run_day: "saturday",
+  });
+  const week = plan.weeks[0];
+  const missed = week.sessions.find((session) =>
+    ["tempo", "interval", "repetition", "hills", "fartlek"].includes(session.type),
+  );
+  expect(missed).toBeTruthy();
+  const futureEasy = week.sessions.find((session) => session.type === "easy" && session.day_index !== missed!.day_index);
+  expect(futureEasy).toBeTruthy();
+  missed!.date = "2026-05-05";
+  futureEasy!.date = "2026-05-06";
+
+  const result = checkMissedSession(plan, [], 0);
+  expect(result).not.toBeNull();
+
+  const moved = result!.newPlan.weeks[0].sessions.find((session) =>
+    session.day_index !== missed!.day_index && session.recipe_id === missed!.recipe_id,
+  );
+  expect(moved).toBeTruthy();
+  expect(moved!.type).toBe(missed!.type);
+  expect(moved!.description).toBe(missed!.description);
+  expect(moved!.main_set).toBe(missed!.main_set);
 });
 
 // ---------------------------------------------------------------------------

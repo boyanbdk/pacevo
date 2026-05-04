@@ -5,6 +5,7 @@ import { test, expect } from "vitest";
 import { buildPlan } from "./build-plan";
 import { vdotFromRace, pacesFromVdot, riegelPredict, tanakaHrmax, hrZones } from "./vdot";
 import { classifyRunner } from "./classify-runner";
+import { getRecipeById } from "./workout-recipes";
 import { GoalRace, Level, TrainingPlan, PlanInputs } from "./types";
 
 const LEVELS: Level[] = ["beginner", "intermediate", "advanced"];
@@ -108,6 +109,11 @@ function assertPlanInvariants(plan: TrainingPlan, goalRace: GoalRace, level: Lev
   const firstTaperIdx = phases.indexOf("taper");
   for (let i = firstTaperIdx; i <= taperIdx; i++) {
     expect(phases[i]).toBe("taper");
+  }
+  for (let i = firstTaperIdx; i <= taperIdx; i++) {
+    if (i > 0) {
+      expect(volumes[i]).toBeLessThanOrEqual(volumes[i - 1]);
+    }
   }
 
   // Long run ≤ 33% of weekly volume
@@ -313,6 +319,23 @@ test("generated run sessions carry recipe metadata", () => {
     expect(session.recipe_id).toBeTruthy();
     expect(session.recipe_family).toBeTruthy();
     expect(session.stimulus).toBeTruthy();
+  }
+});
+
+test("generated session content stays aligned with recipe metadata", () => {
+  const plan = buildPlan(INTERMEDIATE_HALF);
+  const runSessions = plan.weeks
+    .flatMap(w => w.sessions)
+    .filter(s => s.type !== "rest");
+
+  for (const session of runSessions) {
+    const recipe = getRecipeById(session.recipe_id!);
+    expect(recipe).toBeTruthy();
+    expect(session.recipe_family).toBe(recipe!.family);
+    expect(session.stimulus).toBe(recipe!.stimulus);
+    if (recipe!.sessionType === "easy" || recipe!.sessionType === "recovery" || recipe!.sessionType === "tempo") {
+      expect(session.type).toBe(recipe!.sessionType);
+    }
   }
 });
 

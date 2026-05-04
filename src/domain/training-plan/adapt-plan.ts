@@ -77,6 +77,21 @@ function chronicLoad(plan: TrainingPlan, allCompleted: CompletedSession[], weekI
   return loads.reduce((a, b) => a + b, 0) / loads.length;
 }
 
+function localDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function moveSessionContent(source: PlannedSession, targetSlot: PlannedSession): PlannedSession {
+  return {
+    ...source,
+    day_index: targetSlot.day_index,
+    date: targetSlot.date,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Rule: ACWR_CAP
 // If the next-upcoming non-started week's planned load / chronic average > 1.3,
@@ -250,14 +265,13 @@ export function checkMissedSession(
   const week = plan.weeks[currentWeekIndex];
   if (!week) return null;
 
-  const today = new Date();
+  const today = localDateKey(new Date());
   const qualityTypes: SessionType[] = ["tempo", "interval", "repetition", "hills", "fartlek"];
 
   // Find a missed quality session (past its date, not logged)
   const missed = week.sessions.find((s) => {
     if (!qualityTypes.includes(s.type)) return false;
-    const sessionDate = new Date(s.date);
-    if (sessionDate >= today) return false;
+    if (s.date >= today) return false;
     return !completed.some((c) => c.weekIndex === currentWeekIndex && c.dayIndex === s.day_index);
   });
 
@@ -266,8 +280,7 @@ export function checkMissedSession(
   // Find the next easy day in the same week to swap with
   const nextEasy = week.sessions.find((s) => {
     if (s.type !== "easy") return false;
-    const sessionDate = new Date(s.date);
-    return sessionDate >= today && !completed.some((c) => c.weekIndex === currentWeekIndex && c.dayIndex === s.day_index);
+    return s.date >= today && !completed.some((c) => c.weekIndex === currentWeekIndex && c.dayIndex === s.day_index);
   });
 
   if (!nextEasy) return null;
@@ -279,15 +292,14 @@ export function checkMissedSession(
 
   if (missedIdx === -1 || easyIdx === -1) return null;
 
-  // Swap sessions
-  [targetWeek.sessions[missedIdx].type, targetWeek.sessions[easyIdx].type] =
-    [targetWeek.sessions[easyIdx].type, targetWeek.sessions[missedIdx].type];
-  [targetWeek.sessions[missedIdx].description, targetWeek.sessions[easyIdx].description] =
-    [targetWeek.sessions[easyIdx].description, targetWeek.sessions[missedIdx].description];
+  const missedSlot = targetWeek.sessions[missedIdx];
+  const easySlot = targetWeek.sessions[easyIdx];
+  targetWeek.sessions[missedIdx] = moveSessionContent(easySlot, missedSlot);
+  targetWeek.sessions[easyIdx] = moveSessionContent(missedSlot, easySlot);
 
   return {
     rule: "MISSED_SESSION",
-    explanation: `Missed ${missed.type} session on day ${missed.day_index + 1} moved to day ${nextEasy.day_index + 1} within the same week.`,
+    explanation: `Missed ${missed.type} session on day ${missed.day_index} moved to day ${nextEasy.day_index} within the same week.`,
     triggeredBySessionIds: [],
     newPlan: { ...plan, weeks },
   };
