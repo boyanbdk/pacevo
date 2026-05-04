@@ -1202,7 +1202,7 @@ button {
 }
 
 .cal-cell.rest {
-  opacity: 0.5;
+  background: rgba(255, 255, 255, 0.018);
 }
 
 .cal-cell.active-session {
@@ -1230,6 +1230,7 @@ button {
 .cal-date {
   font-size: 11px;
   color: var(--text);
+  font-weight: 800;
   text-transform: none;
   white-space: nowrap;
 }
@@ -1284,7 +1285,8 @@ button {
 .week-card-date {
   margin-top: 2px;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--text);
+  font-weight: 600;
 }
 
 .week-card-stats {
@@ -1338,6 +1340,11 @@ button {
 
 .week-session-main span {
   color: var(--muted);
+}
+
+.week-session-main strong {
+  color: var(--text);
+  font-weight: 700;
 }
 
 .week-session-dot {
