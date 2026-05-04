@@ -51,6 +51,12 @@ const QUALITY_COUNT: Record<Phase, Record<Level, number>> = {
   taper: { beginner: 0, intermediate: 1, advanced: 1 },
 };
 
+const MAX_HARD_SESSIONS: Record<Level, number> = {
+  beginner: 1,
+  intermediate: 2,
+  advanced: 3,
+};
+
 const MIN_WEEKS: Record<GoalRace, Record<Level, number>> = {
   "5K":       { beginner: 8,  intermediate: 6,  advanced: 4  },
   "10K":      { beginner: 10, intermediate: 8,  advanced: 6  },
@@ -243,19 +249,25 @@ function layoutWeek(
     qualityCount = 0;
   }
 
-  const easyDays = Math.max(0, daysPerWeek - 1 - qualityCount);
-  const easyKm = round1((totalKm - longRunKm) / Math.max(easyDays + qualityCount, 1));
-
   const restAfterLong = (longDayIdx % 7) + 1;
+  const dayBeforeLong = longDayIdx === 1 ? 7 : longDayIdx - 1;
   const usedDays = new Set([longDayIdx, restAfterLong]);
 
   const qDays: number[] = [];
   for (let d = 1; d <= 7 && qDays.length < qualityCount; d++) {
-    if (!usedDays.has(d) && !qDays.some(q => Math.abs(d - q) <= 1)) {
+    if (
+      !usedDays.has(d)
+      && d !== dayBeforeLong
+      && !qDays.some(q => Math.abs(d - q) <= 1)
+    ) {
       qDays.push(d);
       usedDays.add(d);
     }
   }
+
+  qualityCount = qDays.length;
+  const easyDays = Math.max(0, daysPerWeek - 1 - qualityCount);
+  const easyKm = round1((totalKm - longRunKm) / Math.max(easyDays + qualityCount, 1));
 
   const eDays: number[] = [];
   for (let d = 1; d <= 7 && eDays.length < easyDays; d++) {
@@ -288,6 +300,11 @@ function layoutWeek(
         trainingFocus,
         difficultyPreference,
         preferCutback: isDeload,
+        maxStressScore: qualityCount >= MAX_HARD_SESSIONS[level]
+          ? 2
+          : qualityCount === MAX_HARD_SESSIONS[level] - 1
+            ? 3
+            : undefined,
       });
       sessions.push(buildRecipeSession(recipe, ctx, "long"));
     } else if (di === restAfterLong) {

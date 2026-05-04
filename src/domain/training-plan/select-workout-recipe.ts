@@ -25,6 +25,7 @@ export interface RecipeSelectionOptions {
   difficultyPreference?: DifficultyPref;
   preferences?: UserWorkoutPreference[];
   preferCutback?: boolean;
+  maxStressScore?: WorkoutRecipe["stressScore"];
 }
 
 const QUALITY_SESSION_TYPES = new Set<RecipeSessionType>(["tempo", "interval"]);
@@ -59,6 +60,7 @@ function isEligible(recipe: WorkoutRecipe, options: RecipeSelectionOptions): boo
   if (ctx.weeklyKm < recipe.minWeeklyKm) return false;
   if (recipe.maxWeeklyKm !== undefined && ctx.weeklyKm > recipe.maxWeeklyKm) return false;
   if (daysPerWeek < recipe.minDaysPerWeek) return false;
+  if (options.maxStressScore !== undefined && recipe.stressScore > options.maxStressScore) return false;
 
   // Beginners get no VO2 interval work in the first 4 weeks. Fartlek and
   // threshold work can still appear later if the base weekly load supports it.
@@ -138,7 +140,8 @@ export function selectWorkoutRecipe(options: RecipeSelectionOptions): WorkoutRec
         && recipe.levels.includes(options.ctx.level)
         && options.daysPerWeek >= recipe.minDaysPerWeek
         && options.ctx.weeklyKm >= recipe.minWeeklyKm
-        && (recipe.maxWeeklyKm === undefined || options.ctx.weeklyKm <= recipe.maxWeeklyKm);
+        && (recipe.maxWeeklyKm === undefined || options.ctx.weeklyKm <= recipe.maxWeeklyKm)
+        && (options.maxStressScore === undefined || recipe.stressScore <= options.maxStressScore);
     });
     const volumeRelaxedCandidates = relaxedCandidates.length > 0
       ? relaxedCandidates

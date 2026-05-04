@@ -37,25 +37,34 @@ npm audit --omit=dev
 
 #### Training plan generator
 
-- Build a personalised multi-week race-prep plan from a five-step onboarding form.
+- Build a personalised multi-week race-prep plan from a six-step onboarding form.
 - Supports goals: 5K, 10K, half marathon, marathon.
-- Inputs: goal date, current weekly km, longest recent run, recent race time (for VDOT), constraints (days/week, session cap, long-run day, surface), and health data (age, HR, injury flags).
-- Level (beginner / intermediate / advanced) is inferred from your inputs, not chosen.
-- Plans follow VDOT-based pacing, polarised 80/20 intensity distribution, structured deload weeks, and evidence-based taper.
-- Calendar view on desktop, week list on mobile; each session links to a detail screen with rationale and pace targets.
+- Inputs: goal date, current weekly km, longest recent run, recent race time or goal-race estimate, training focus, volume and difficulty preference, intensity display mode, constraints (days/week, session cap, long-run day, surface), and health data (age, HR, injury flags).
+- Level (beginner / intermediate / advanced) can be selected, but the engine still infers a safe level from mileage, long-run history, and race estimate; riskier overrides are clamped to the safer level.
+- Plans follow VDOT-based pacing, RPE and HR target metadata, polarised 80/20 intensity distribution, structured deload weeks, and evidence-based taper.
+- Workouts are generated from a recipe library rather than fixed text, with varied easy, long-run, tempo, interval, hills, and fartlek sessions chosen by goal, phase, level, schedule, and preferences.
+- Calendar view on desktop, week list on mobile; each session links to a detail screen with rationale, structure, and pace/RPE/HR display modes.
 - Log sessions manually after each run.
 - Import completed runs from GPX or TCX files (Garmin, Strava, Coros, Suunto, Apple Health exports). Same-date matches are applied automatically; date mismatches surface as suggestions.
-- Adaptive layer: after logging, the plan checks ACWR load ratios, resting HR trends, aerobic deficit, and missed sessions; it creates a new plan version when an adjustment is needed, with a plain-English explanation for every change.
+- Like, dislike, favourite, and swap workouts. Feedback persists locally and safely biases future workout selection without increasing hard-session count above guardrails.
+- Adaptive layer: after logging or feedback, the plan checks injury flags, ACWR load ratios, aerobic deficit, missed sessions, fitness/VDOT changes, and learned preferences; it creates a new plan version when an adjustment is needed, with a plain-English explanation for every change.
 - Full version history — prior weeks are never mutated.
 - Export the current plan as PNG (week card), PDF (full plan), or DOCX (structured tables).
 - Archive and restore plans from the plans list.
+
+#### Dashboard
+
+- `/app` shows the active goal, current week, phase, plan status, and the next unlogged run.
+- Weekly progress cards show completed km, logged sessions, next long run, latest adaptation, learned preference signal, and saved one-off workouts.
+- The dashboard includes a compact current-week list, recent logs/imports/adaptations/swaps, and a feedback prompt when the latest completed workout has not been rated.
+- Empty state focuses on building a plan or creating a one-off workout; default easy/cool-down paces live in Settings.
 
 ### Pages
 
 | Path | Description |
 |------|-------------|
 | `/login` `/register` | Local auth |
-| `/app` | Dashboard — active plan + recent workouts |
+| `/app` | Dashboard — active plan, next run, weekly progress, recent activity |
 | `/app/new` | New workout flow |
 | `/app/workouts/[id]` | Saved workout detail, regenerate, export |
 | `/app/plans` | All training plans |

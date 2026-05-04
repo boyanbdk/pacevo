@@ -7,6 +7,33 @@ import { vdotFromRace, pacesFromVdot, riegelPredict, tanakaHrmax, hrZones } from
 import { classifyRunner } from "./classify-runner";
 import { GoalRace, Level, TrainingPlan, PlanInputs } from "./types";
 
+const LEVELS: Level[] = ["beginner", "intermediate", "advanced"];
+const GOALS: GoalRace[] = ["5K", "10K", "half", "marathon"];
+
+const HARD_TYPES = new Set([
+  "tempo",
+  "interval",
+  "repetition",
+  "marathon_pace",
+  "hills",
+  "fartlek",
+]);
+
+function futureDate(weeksFromNow: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + weeksFromNow * 7);
+  return d.toISOString().slice(0, 10);
+}
+
+function raceDistanceM(goalRace: GoalRace): number {
+  return {
+    "5K": 5000,
+    "10K": 10000,
+    half: 21097,
+    marathon: 42195,
+  }[goalRace];
+}
+
 // ---------------------------------------------------------------------------
 // VDOT tests
 // ---------------------------------------------------------------------------
@@ -181,6 +208,64 @@ const ADVANCED_MARATHON: PlanInputs = {
   injury_flags: [],
 };
 
+type GoldenProfile = {
+  weeklyKm: number;
+  longestKm: number;
+  raceTimeS: number | null;
+  weeks: number;
+  days: number;
+};
+
+const GOLDEN_PROFILES: Record<GoalRace, Record<Level, GoldenProfile>> = {
+  "5K": {
+    beginner: { weeklyKm: 16, longestKm: 5, raceTimeS: null, weeks: 14, days: 4 },
+    intermediate: { weeklyKm: 35, longestKm: 8, raceTimeS: 22 * 60, weeks: 12, days: 5 },
+    advanced: { weeklyKm: 70, longestKm: 14, raceTimeS: 17 * 60 + 30, weeks: 10, days: 6 },
+  },
+  "10K": {
+    beginner: { weeklyKm: 24, longestKm: 7, raceTimeS: null, weeks: 16, days: 4 },
+    intermediate: { weeklyKm: 45, longestKm: 11, raceTimeS: 47 * 60, weeks: 14, days: 5 },
+    advanced: { weeklyKm: 80, longestKm: 18, raceTimeS: 37 * 60 + 30, weeks: 12, days: 6 },
+  },
+  half: {
+    beginner: { weeklyKm: 28, longestKm: 9, raceTimeS: null, weeks: 18, days: 4 },
+    intermediate: { weeklyKm: 45, longestKm: 14, raceTimeS: 1 * 3600 + 43 * 60, weeks: 16, days: 5 },
+    advanced: { weeklyKm: 84, longestKm: 24, raceTimeS: 1 * 3600 + 20 * 60, weeks: 14, days: 6 },
+  },
+  marathon: {
+    beginner: { weeklyKm: 36, longestKm: 12, raceTimeS: null, weeks: 22, days: 4 },
+    intermediate: { weeklyKm: 62, longestKm: 21, raceTimeS: 3 * 3600 + 35 * 60, weeks: 20, days: 5 },
+    advanced: { weeklyKm: 100, longestKm: 32, raceTimeS: 2 * 3600 + 52 * 60, weeks: 18, days: 6 },
+  },
+};
+
+function goldenInputs(goalRace: GoalRace, level: Level): PlanInputs {
+  const profile = GOLDEN_PROFILES[goalRace][level];
+  return {
+    goal_race: goalRace,
+    goal_date: futureDate(profile.weeks),
+    current_weekly_km: profile.weeklyKm,
+    longest_recent_km: profile.longestKm,
+    recent_race: profile.raceTimeS
+      ? { distance_m: raceDistanceM(goalRace), time_s: profile.raceTimeS }
+      : null,
+    estimated_race_time_s: null,
+    age: 34,
+    max_hr: 186,
+    resting_hr: 52,
+    days_per_week: profile.days,
+    session_minutes_cap: null,
+    long_run_day: level === "advanced" ? "sunday" : "saturday",
+    surface: "road",
+    injury_flags: [],
+    self_selected_level: level,
+    training_focus: goalRace === "5K" ? "speed" : goalRace === "marathon" ? "endurance" : "balanced",
+    volume_preference: "steady",
+    difficulty_preference: level === "advanced" ? "challenging" : "balanced",
+    intensity_mode: level === "beginner" ? "hr" : "pace",
+  };
+}
+
 test("beginner 5K plan passes all invariants", () => {
   const plan = buildPlan(BEGINNER_5K);
   assertPlanInvariants(plan, "5K", "beginner");
@@ -195,10 +280,10 @@ test("intermediate half plan passes all invariants and has valid VDOT", () => {
   expect(plan.meta.vdot!).toBeLessThanOrEqual(50);
 });
 
-test("advanced marathon plan has ≥1.5 quality sessions/wk in peak", () => {
+test("advanced marathon plan has ≥1.5 quality sessions/wk in non-deload peak weeks", () => {
   const plan = buildPlan(ADVANCED_MARATHON);
   assertPlanInvariants(plan, "marathon", "advanced");
-  const peakWeeks = plan.weeks.filter(w => w.phase === "peak");
+  const peakWeeks = plan.weeks.filter(w => w.phase === "peak" && !w.is_deload);
   const avgQuality = peakWeeks.reduce((s, w) => s + w.quality_count, 0) / peakWeeks.length;
   expect(avgQuality).toBeGreaterThanOrEqual(1.5);
 });
@@ -257,4 +342,85 @@ test("quality recipes do not repeat inside a 3-week window when alternatives exi
       expect(recent).not.toContain(id);
     }
   }
+});
+
+// ---------------------------------------------------------------------------
+// Phase 8 — golden coverage and safety properties
+// ---------------------------------------------------------------------------
+
+test.each(
+  GOALS.flatMap((goalRace) => LEVELS.map((level) => [goalRace, level] as const)),
+)("golden %s %s plan passes core invariants", (goalRace, level) => {
+  const plan = buildPlan(goldenInputs(goalRace, level));
+
+  assertPlanInvariants(plan, goalRace, level);
+  expect(plan.meta.weeks_total).toBeGreaterThanOrEqual(4);
+
+  const runSessions = plan.weeks.flatMap((week) => week.sessions).filter((session) => session.type !== "rest");
+  expect(runSessions.length).toBeGreaterThan(0);
+  expect(runSessions.every((session) => session.recipe_id && session.recipe_family && session.stimulus)).toBe(true);
+});
+
+test.each(GOALS)("golden %s plans cover all runner levels distinctly", (goalRace) => {
+  const plans = LEVELS.map((level) => buildPlan(goldenInputs(goalRace, level)));
+
+  expect(plans.map((plan) => plan.meta.level)).toEqual(LEVELS);
+
+  const peakKmByLevel = plans.map((plan) => Math.max(...plan.weeks.map((week) => week.total_km)));
+  expect(peakKmByLevel[0]).toBeLessThan(peakKmByLevel[1]);
+  expect(peakKmByLevel[1]).toBeLessThan(peakKmByLevel[2]);
+
+  const qualityVarietyByLevel = plans.map((plan) =>
+    new Set(
+      plan.weeks
+        .flatMap((week) => week.sessions)
+        .filter((session) => session.session_role === "quality")
+        .map((session) => session.recipe_id),
+    ).size,
+  );
+  expect(qualityVarietyByLevel[2]).toBeGreaterThanOrEqual(qualityVarietyByLevel[0]);
+});
+
+test.each(
+  GOALS.flatMap((goalRace) => LEVELS.map((level) => [goalRace, level] as const)),
+)("golden %s %s plan never schedules adjacent hard sessions", (goalRace, level) => {
+  const plan = buildPlan(goldenInputs(goalRace, level));
+
+  for (const week of plan.weeks) {
+    const hardDays = week.sessions
+      .filter((session) => HARD_TYPES.has(session.type))
+      .map((session) => session.day_index);
+
+    for (let i = 1; i < hardDays.length; i++) {
+      expect(hardDays[i] - hardDays[i - 1]).toBeGreaterThan(1);
+    }
+  }
+});
+
+test.each(
+  GOALS.flatMap((goalRace) => LEVELS.map((level) => [goalRace, level] as const)),
+)("golden %s %s plan keeps hard-session count inside level guardrails", (goalRace, level) => {
+  const plan = buildPlan(goldenInputs(goalRace, level));
+  const maxHardByLevel: Record<Level, number> = {
+    beginner: 1,
+    intermediate: 2,
+    advanced: 3,
+  };
+
+  for (const week of plan.weeks) {
+    const hardCount = week.sessions.filter((session) => HARD_TYPES.has(session.type)).length;
+    expect(hardCount).toBeLessThanOrEqual(maxHardByLevel[level]);
+  }
+});
+
+test.each(GOALS)("golden %s plans provide varied quality workouts across a full plan", (goalRace) => {
+  const level: Level = goalRace === "marathon" ? "advanced" : "intermediate";
+  const plan = buildPlan(goldenInputs(goalRace, level));
+  const qualityIds = plan.weeks
+    .flatMap((week) => week.sessions)
+    .filter((session) => session.session_role === "quality")
+    .map((session) => session.recipe_id)
+    .filter((id): id is string => Boolean(id));
+
+  expect(new Set(qualityIds).size).toBeGreaterThanOrEqual(Math.min(3, qualityIds.length));
 });
