@@ -11,11 +11,14 @@ import {
   checkAcwrCap,
   checkInjuryFlag,
   checkMissedSession,
+  checkPreferenceReplan,
   checkVdotUpdate,
   runAdaptations,
 } from "./adapt-plan";
+import { selectWorkoutRecipe } from "./select-workout-recipe";
 import type { CompletedSession } from "@/lib/plan-storage";
 import type { PlanInputs } from "./types";
+import type { UserWorkoutPreference } from "./workout-preferences";
 
 // ---------------------------------------------------------------------------
 // Fixture: build a real plan to run rules against
@@ -304,6 +307,112 @@ test("All adaptation explanations are under 200 characters", () => {
     if (r) {
       expect(r.explanation.length).toBeLessThan(200);
     }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PREFERENCE_REPLAN
+// ---------------------------------------------------------------------------
+
+test("PREFERENCE_REPLAN rewrites only future quality sessions", () => {
+  const plan = buildPlan({
+    ...BASE_INPUTS,
+    goal_race: "half",
+    goal_date: (() => {
+      const d = new Date();
+      d.setDate(d.getDate() + 140);
+      return d.toISOString().slice(0, 10);
+    })(),
+    current_weekly_km: 45,
+    longest_recent_km: 16,
+    days_per_week: 5,
+  });
+  const currentWeekIndex = 1;
+  const futureWeekIndex = plan.weeks.findIndex((week, index) =>
+    index > currentWeekIndex && week.sessions.some((session) => session.session_role === "quality" && session.recipe_id),
+  );
+  expect(futureWeekIndex).toBeGreaterThan(currentWeekIndex);
+  const futureQuality = plan.weeks[futureWeekIndex].sessions.find(
+    (session) => session.session_role === "quality" && session.recipe_id,
+  )!;
+
+  const preferred = selectWorkoutRecipe({
+    target: "quality",
+    ctx: {
+      dayIndex: futureQuality.day_index,
+      date: new Date(futureQuality.date),
+      targetKm: futureQuality.target_km ?? 8,
+      paces: plan.paces,
+      level: plan.meta.level,
+      phase: plan.weeks[futureWeekIndex].phase,
+      goalRace: plan.meta.goal_race,
+      weeklyKm: plan.weeks[futureWeekIndex].total_km,
+      weekIndex: plan.weeks[futureWeekIndex].week_index,
+    },
+    daysPerWeek: 5,
+    preferences: [{
+      recipeId: "tempo_cruise_intervals",
+      recipeFamily: "tempo_cruise",
+      score: 3,
+      likes: 1,
+      dislikes: 0,
+      favourites: 1,
+      swapsAway: 0,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    }],
+  });
+  const preferences: UserWorkoutPreference[] = [{
+    recipeId: preferred.id,
+    recipeFamily: preferred.family,
+    score: 3,
+    likes: 1,
+    dislikes: 0,
+    favourites: 1,
+    swapsAway: 0,
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  }];
+
+  const result = checkPreferenceReplan(plan, [], preferences, currentWeekIndex, 5);
+
+  expect(result).not.toBeNull();
+  expect(result!.rule).toBe("PREFERENCE_REPLAN");
+  expect(result!.explanation).toContain("preferences");
+  expect(result!.explanation.length).toBeLessThan(200);
+  expect(result!.newPlan.weeks[0].sessions).toEqual(plan.weeks[0].sessions);
+  expect(result!.newPlan.weeks[1].sessions).toEqual(plan.weeks[1].sessions);
+});
+
+test("PREFERENCE_REPLAN leaves completed future sessions immutable", () => {
+  const plan = makePlan();
+  const futureWeekIndex = plan.weeks.findIndex((week, index) =>
+    index > 0 && week.sessions.some((session) => session.session_role === "quality" && session.recipe_id),
+  );
+  if (futureWeekIndex === -1) return;
+
+  const futureQuality = plan.weeks[futureWeekIndex].sessions.find(
+    (session) => session.session_role === "quality" && session.recipe_id,
+  )!;
+  const completed = [
+    makeCompleted("x", futureWeekIndex, futureQuality.day_index, { actualKm: futureQuality.target_km }),
+  ];
+  const preferences: UserWorkoutPreference[] = [{
+    recipeId: "tempo_cruise_intervals",
+    recipeFamily: "tempo_cruise",
+    score: 3,
+    likes: 1,
+    dislikes: 0,
+    favourites: 1,
+    swapsAway: 0,
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  }];
+
+  const result = checkPreferenceReplan(plan, completed, preferences, 0, BASE_INPUTS.days_per_week);
+
+  if (result) {
+    const newSession = result.newPlan.weeks[futureWeekIndex].sessions.find(
+      (session) => session.day_index === futureQuality.day_index,
+    );
+    expect(newSession).toEqual(futureQuality);
   }
 });
 

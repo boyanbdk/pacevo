@@ -9,7 +9,7 @@ import { runAdaptations } from "@/domain/training-plan/adapt-plan";
 import { matchImportedActivities, parseActivityFile, type ActivityMatch, type ImportedActivity } from "@/domain/training-plan/activity-import";
 import type { TrainingWeek } from "@/domain/training-plan/types";
 import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
-import { applyAdaptation, getPlan, logSession, updatePlanStatus } from "@/lib/plan-storage";
+import { applyAdaptation, getPlan, getWorkoutPreferences, logSession, updatePlanStatus } from "@/lib/plan-storage";
 import { exportPlanDocx, exportPlanPdf, exportPlanWeekImage } from "@/lib/export";
 
 // ---------------------------------------------------------------------------
@@ -189,6 +189,8 @@ function ImportedActivityPanel({
       refreshed.completedSessions,
       refreshed.inputs,
       currentWeekIndexForPlan(refreshed),
+      getWorkoutPreferences(refreshed.id),
+      refreshed.inputs.days_per_week,
     );
 
     if (result) {

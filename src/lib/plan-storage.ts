@@ -34,7 +34,8 @@ export type AdaptationRule =
   | "AEROBIC_DEFICIT"
   | "MISSED_SESSION"
   | "VDOT_UPDATE"
-  | "INJURY_FLAG";
+  | "INJURY_FLAG"
+  | "PREFERENCE_REPLAN";
 
 export type AdaptationEvent = {
   id: string;

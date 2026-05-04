@@ -28,6 +28,7 @@ import {
   getCompletedSession,
   getPlan,
   getWorkoutFeedbackForSession,
+  getWorkoutPreferences,
   logSession,
   recordWorkoutFeedback,
 } from "@/lib/plan-storage";
@@ -168,6 +169,8 @@ function LogSessionForm({
         refreshed.completedSessions,
         refreshed.inputs,
         currentWeekIndex,
+        getWorkoutPreferences(refreshed.id),
+        refreshed.inputs.days_per_week,
       );
 
       if (result) {
@@ -335,7 +338,28 @@ function FeedbackControls({
   function save(type: WorkoutFeedbackType, reason?: WorkoutFeedbackReason) {
     recordWorkoutFeedback(planId, sessionId, session, type, reason);
     const refreshed = getPlan(planId);
-    if (refreshed) onSaved(refreshed);
+    if (!refreshed) return;
+
+    const result = runAdaptations(
+      refreshed.plan,
+      refreshed.completedSessions,
+      refreshed.inputs,
+      weekIndex,
+      getWorkoutPreferences(refreshed.id),
+      refreshed.inputs.days_per_week,
+    );
+
+    if (result) {
+      const { plan: adapted } = applyAdaptation(refreshed.id, result.newPlan, {
+        rule: result.rule,
+        explanation: result.explanation,
+        triggeredBySessionIds: result.triggeredBySessionIds,
+        firedAt: new Date().toISOString(),
+      });
+      onSaved(adapted);
+    } else {
+      onSaved(refreshed);
+    }
   }
 
   function showSwapOptions() {

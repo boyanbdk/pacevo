@@ -7,8 +7,10 @@
 //   Aerobic deficit / Z2 policing — Seiler (2010) IJSPP 5:276.
 //   VDOT update — Daniels' Running Formula, 4th ed.
 
-import { TrainingPlan, TrainingWeek, PlannedSession, SessionType } from "./types";
+import { TrainingPlan, TrainingWeek, PlannedSession, SessionType, WorkoutContext, WorkoutRecipe } from "./types";
 import { vdotFromRace, pacesFromVdot } from "./vdot";
+import { selectWorkoutRecipe } from "./select-workout-recipe";
+import type { UserWorkoutPreference } from "./workout-preferences";
 import type { CompletedSession, AdaptationRule } from "@/lib/plan-storage";
 
 export type AdaptationResult = {
@@ -27,6 +29,22 @@ function cloneWeeks(weeks: TrainingWeek[]): TrainingWeek[] {
     ...w,
     sessions: w.sessions.map((s) => ({ ...s })),
   }));
+}
+
+function buildRecipeSession(
+  recipe: WorkoutRecipe,
+  ctx: WorkoutContext,
+  previous: PlannedSession,
+): PlannedSession {
+  return {
+    ...recipe.build(ctx),
+    day_index: previous.day_index,
+    date: previous.date,
+    session_role: previous.session_role,
+    recipe_id: recipe.id,
+    recipe_family: recipe.family,
+    stimulus: recipe.stimulus,
+  };
 }
 
 /** Weekly kilometres for a given week index, using completed sessions if available. */
@@ -341,6 +359,79 @@ export function checkVdotUpdate(
 }
 
 // ---------------------------------------------------------------------------
+// Rule: PREFERENCE_REPLAN
+// Re-score future quality sessions using learned preference profile. Completed
+// and past/current-week sessions are intentionally left unchanged.
+// ---------------------------------------------------------------------------
+
+export function checkPreferenceReplan(
+  plan: TrainingPlan,
+  completed: CompletedSession[],
+  preferences: UserWorkoutPreference[],
+  currentWeekIndex: number,
+  daysPerWeek: number,
+): AdaptationResult | null {
+  if (preferences.length === 0) return null;
+
+  const weeks = cloneWeeks(plan.weeks);
+  const changedRecipeIds = new Set<string>();
+
+  for (let wi = currentWeekIndex + 1; wi < weeks.length; wi++) {
+    const week = weeks[wi];
+    const recentQualityRecipeIds = weeks
+      .slice(Math.max(0, wi - 3), wi)
+      .flatMap((candidateWeek) => candidateWeek.sessions)
+      .filter((session) => session.session_role === "quality")
+      .map((session) => session.recipe_id)
+      .filter((id): id is string => Boolean(id));
+
+    for (let si = 0; si < week.sessions.length; si++) {
+      const session = week.sessions[si];
+      const isCompleted = completed.some(
+        (done) => done.weekIndex === wi && done.dayIndex === session.day_index,
+      );
+      if (isCompleted || session.session_role !== "quality" || !session.recipe_id) continue;
+
+      const ctx: WorkoutContext = {
+        dayIndex: session.day_index,
+        date: new Date(session.date),
+        targetKm: session.target_km ?? 0,
+        paces: plan.paces,
+        level: plan.meta.level,
+        phase: week.phase,
+        goalRace: plan.meta.goal_race,
+        weeklyKm: week.total_km,
+        weekIndex: week.week_index,
+      };
+      const selected = selectWorkoutRecipe({
+        target: "quality",
+        ctx,
+        daysPerWeek,
+        recentRecipeIds: recentQualityRecipeIds.filter((id) => id !== session.recipe_id),
+        trainingFocus: plan.meta.training_focus,
+        difficultyPreference: plan.meta.difficulty_preference,
+        preferences,
+      });
+
+      if (selected.id !== session.recipe_id) {
+        week.sessions[si] = buildRecipeSession(selected, ctx, session);
+        changedRecipeIds.add(selected.id);
+      }
+      recentQualityRecipeIds.push(selected.id);
+    }
+  }
+
+  if (changedRecipeIds.size === 0) return null;
+
+  return {
+    rule: "PREFERENCE_REPLAN",
+    explanation: `Future workouts updated from learned preferences where safe: ${[...changedRecipeIds].slice(0, 2).join(", ")}.`,
+    triggeredBySessionIds: [],
+    newPlan: { ...plan, weeks },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point
 // Runs all checks in priority order. Returns the first fired result.
 // Call again after applying to check for additional triggers.
@@ -351,6 +442,8 @@ export function runAdaptations(
   completed: CompletedSession[],
   inputs: { injury_flags?: string[] },
   currentWeekIndex: number,
+  preferences: UserWorkoutPreference[] = [],
+  daysPerWeek?: number,
 ): AdaptationResult | null {
   return (
     checkInjuryFlag(plan, inputs, currentWeekIndex) ??
@@ -358,6 +451,7 @@ export function runAdaptations(
     checkAerobicDeficit(plan, completed, currentWeekIndex) ??
     checkMissedSession(plan, completed, currentWeekIndex) ??
     checkVdotUpdate(plan, completed, currentWeekIndex) ??
+    checkPreferenceReplan(plan, completed, preferences, currentWeekIndex, daysPerWeek ?? 4) ??
     null
   );
 }
