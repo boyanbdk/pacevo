@@ -1,4 +1,12 @@
-import type { TrainingPlan, PlanInputs } from "@/domain/training-plan/types";
+import {
+  calculateWorkoutPreferences,
+  latestFeedbackForSession,
+  type UserWorkoutPreference,
+  type WorkoutFeedback,
+  type WorkoutFeedbackReason,
+  type WorkoutFeedbackType,
+} from "../domain/training-plan/workout-preferences";
+import type { TrainingPlan, PlanInputs, PlannedSession } from "../domain/training-plan/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,6 +62,7 @@ export type SavedPlan = {
   versions: PlanVersion[];
   completedSessions: CompletedSession[];
   adaptationEvents: AdaptationEvent[];
+  workoutFeedback: WorkoutFeedback[];
   createdAt: string;
   updatedAt: string;
 };
@@ -63,6 +72,13 @@ export type SavedPlan = {
 // ---------------------------------------------------------------------------
 
 const plansKey = "run-tailor:plans";
+
+function normalizePlan(plan: SavedPlan): SavedPlan {
+  return {
+    ...plan,
+    workoutFeedback: plan.workoutFeedback ?? [],
+  };
+}
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -79,7 +95,7 @@ function readJson<T>(key: string, fallback: T): T {
 // ---------------------------------------------------------------------------
 
 export function getPlans(): SavedPlan[] {
-  return readJson<SavedPlan[]>(plansKey, []);
+  return readJson<SavedPlan[]>(plansKey, []).map(normalizePlan);
 }
 
 export function getPlan(id: string): SavedPlan | undefined {
@@ -119,6 +135,7 @@ export function createPlan(inputs: PlanInputs, plan: TrainingPlan): SavedPlan {
     versions: [initialVersion],
     completedSessions: [],
     adaptationEvents: [],
+    workoutFeedback: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -160,6 +177,58 @@ export function logSession(planId: string, session: Omit<CompletedSession, "id" 
 export function getCompletedSession(planId: string, weekIndex: number, dayIndex: number): CompletedSession | undefined {
   const plan = getPlan(planId);
   return plan?.completedSessions.findLast((s) => s.weekIndex === weekIndex && s.dayIndex === dayIndex);
+}
+
+// ---------------------------------------------------------------------------
+// Workout feedback
+// ---------------------------------------------------------------------------
+
+export function recordWorkoutFeedback(
+  planId: string,
+  sessionId: string,
+  session: PlannedSession,
+  type: WorkoutFeedbackType,
+  reason?: WorkoutFeedbackReason,
+): WorkoutFeedback {
+  const plan = getPlan(planId);
+  if (!plan) throw new Error(`Plan ${planId} not found`);
+  if (!session.recipe_id || !session.recipe_family) {
+    throw new Error("Workout feedback requires recipe metadata on the planned session.");
+  }
+
+  const now = new Date().toISOString();
+  const feedback: WorkoutFeedback = {
+    id: crypto.randomUUID(),
+    planId,
+    sessionId,
+    recipeId: session.recipe_id,
+    recipeFamily: session.recipe_family,
+    type,
+    reason,
+    createdAt: now,
+  };
+
+  const updated: SavedPlan = {
+    ...plan,
+    workoutFeedback: [...plan.workoutFeedback, feedback],
+    updatedAt: now,
+  };
+
+  savePlan(updated);
+  return feedback;
+}
+
+export function getWorkoutFeedbackForSession(
+  planId: string,
+  sessionId: string,
+): WorkoutFeedback | undefined {
+  const plan = getPlan(planId);
+  return plan ? latestFeedbackForSession(plan.workoutFeedback, sessionId) : undefined;
+}
+
+export function getWorkoutPreferences(planId: string): UserWorkoutPreference[] {
+  const plan = getPlan(planId);
+  return calculateWorkoutPreferences(plan?.workoutFeedback ?? []);
 }
 
 // ---------------------------------------------------------------------------

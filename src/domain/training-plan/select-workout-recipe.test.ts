@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { selectWorkoutRecipe } from "./select-workout-recipe";
 import { pacesFromVdot } from "./vdot";
 import type { WorkoutContext } from "./types";
+import type { UserWorkoutPreference } from "./workout-preferences";
 
 function makeCtx(overrides: Partial<WorkoutContext> = {}): WorkoutContext {
   return {
@@ -105,5 +106,28 @@ describe("selectWorkoutRecipe", () => {
     });
 
     expect(comfortable.stressScore).toBeLessThanOrEqual(challenging.stressScore);
+  });
+
+  test("preference profile can bias selection inside the safe candidate set", () => {
+    const ctx = makeCtx({ goalRace: "half", phase: "build", weeklyKm: 60 });
+    const preferences: UserWorkoutPreference[] = [{
+      recipeId: "tempo_cruise_intervals",
+      recipeFamily: "tempo_cruise",
+      score: 3,
+      likes: 1,
+      dislikes: 0,
+      favourites: 1,
+      swapsAway: 0,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    }];
+
+    const recipe = selectWorkoutRecipe({
+      target: "quality",
+      ctx,
+      daysPerWeek: 5,
+      preferences,
+    });
+
+    expect(recipe.id).toBe("tempo_cruise_intervals");
   });
 });

@@ -1,14 +1,34 @@
 "use client";
 
-import { AlertCircle, ArrowLeft, CheckCircle, Clock, Heart, MapPin, Zap } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  CheckCircle,
+  Clock,
+  Heart,
+  MapPin,
+  RefreshCw,
+  Star,
+  ThumbsDown,
+  ThumbsUp,
+  Zap,
+} from "lucide-react";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { formatPace, renderIntensity } from "@/domain/training-plan";
 import { runAdaptations } from "@/domain/training-plan/adapt-plan";
 import type { IntensityMode, PlannedSession, TrainingWeek } from "@/domain/training-plan/types";
+import type { WorkoutFeedbackReason, WorkoutFeedbackType } from "@/domain/training-plan/workout-preferences";
 import type { CompletedSession, SavedPlan } from "@/lib/plan-storage";
-import { applyAdaptation, getCompletedSession, getPlan, logSession } from "@/lib/plan-storage";
+import {
+  applyAdaptation,
+  getCompletedSession,
+  getPlan,
+  getWorkoutFeedbackForSession,
+  logSession,
+  recordWorkoutFeedback,
+} from "@/lib/plan-storage";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -54,6 +74,16 @@ const MODE_LABELS: { value: IntensityMode; label: string }[] = [
   { value: "pace", label: "Pace" },
   { value: "rpe",  label: "RPE" },
   { value: "hr",   label: "Heart rate" },
+];
+
+const DISLIKE_REASONS: { value: WorkoutFeedbackReason; label: string }[] = [
+  { value: "too_hard", label: "Too hard" },
+  { value: "too_boring", label: "Too boring" },
+  { value: "too_long", label: "Too long" },
+  { value: "too_much_speed", label: "Too much speed" },
+  { value: "too_structured", label: "Too structured" },
+  { value: "schedule_fit", label: "Did not fit schedule" },
+  { value: "other", label: "Other" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -277,6 +307,100 @@ function ModeSwitcher({
   );
 }
 
+function FeedbackControls({
+  planId,
+  sessionId,
+  session,
+  onSaved,
+}: {
+  planId: string;
+  sessionId: string;
+  session: PlannedSession;
+  onSaved: (updated: SavedPlan) => void;
+}) {
+  const [selectedReason, setSelectedReason] = useState<WorkoutFeedbackReason>("too_hard");
+  const latestFeedback = getWorkoutFeedbackForSession(planId, sessionId);
+  const latestType = latestFeedback?.type;
+  const canRecord = Boolean(session.recipe_id && session.recipe_family);
+
+  function save(type: WorkoutFeedbackType, reason?: WorkoutFeedbackReason) {
+    recordWorkoutFeedback(planId, sessionId, session, type, reason);
+    const refreshed = getPlan(planId);
+    if (refreshed) onSaved(refreshed);
+  }
+
+  if (session.type === "rest") return null;
+
+  return (
+    <div className="panel" style={{ marginBottom: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
+        <div>
+          <h3 style={{ margin: "0 0 4px" }}>Feedback</h3>
+          <p className="muted" style={{ margin: 0 }}>
+            This will bias future workout selection inside the plan guardrails.
+          </p>
+        </div>
+        {latestFeedback && <span className="tag">Last: {latestFeedback.type}</span>}
+      </div>
+
+      {!canRecord && (
+        <div className="plan-warn" style={{ marginBottom: 12 }}>
+          <AlertCircle size={15} />
+          <span>This older session has no recipe metadata, so feedback cannot be learned from it.</span>
+        </div>
+      )}
+
+      <div className="button-row">
+        <button
+          type="button"
+          className={`button ghost ${latestType === "like" ? "selected-action" : ""}`}
+          disabled={!canRecord}
+          onClick={() => save("like")}
+        >
+          <ThumbsUp size={16} />
+          Like
+        </button>
+        <button
+          type="button"
+          className={`button ghost ${latestType === "favourite" ? "selected-action" : ""}`}
+          disabled={!canRecord}
+          onClick={() => save(latestType === "favourite" ? "unfavourite" : "favourite")}
+        >
+          <Star size={16} />
+          {latestType === "favourite" ? "Unfavourite" : "Favourite"}
+        </button>
+      </div>
+
+      <div className="button-row" style={{ marginTop: 10 }}>
+        <select
+          className="select"
+          value={selectedReason}
+          disabled={!canRecord}
+          onChange={(event) => setSelectedReason(event.target.value as WorkoutFeedbackReason)}
+          style={{ maxWidth: 220 }}
+        >
+          {DISLIKE_REASONS.map((reason) => (
+            <option key={reason.value} value={reason.value}>{reason.label}</option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className={`button ghost ${latestType === "dislike" ? "selected-action" : ""}`}
+          disabled={!canRecord}
+          onClick={() => save("dislike", selectedReason)}
+        >
+          <ThumbsDown size={16} />
+          Dislike
+        </button>
+        <button type="button" className="button ghost" disabled title="Similar workout swaps are Phase 6.">
+          <RefreshCw size={16} />
+          Switch similar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -446,6 +570,13 @@ export default function SessionDetailPage() {
           {existing.note && <p className="muted" style={{ margin: "10px 0 0" }}>{existing.note}</p>}
         </div>
       )}
+
+      <FeedbackControls
+        planId={id}
+        sessionId={sessionId}
+        session={session}
+        onSaved={setPlan}
+      />
 
       {/* Description & rationale */}
       <div className="grid-2" style={{ marginBottom: 18 }}>

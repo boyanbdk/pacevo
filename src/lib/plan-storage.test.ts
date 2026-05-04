@@ -1,7 +1,16 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import { buildPlan } from "../domain/training-plan/build-plan";
 import type { PlanInputs } from "../domain/training-plan/types";
-import { createPlan, getCompletedSession, logSession, savePlan } from "./plan-storage";
+import {
+  createPlan,
+  getCompletedSession,
+  getPlan,
+  getWorkoutFeedbackForSession,
+  getWorkoutPreferences,
+  logSession,
+  recordWorkoutFeedback,
+  savePlan,
+} from "./plan-storage";
 
 const INPUTS: PlanInputs = {
   goal_race: "10K",
@@ -78,4 +87,25 @@ test("logSession replaces the existing log for the same planned session", () => 
   expect(second.id).toBe(first.id);
   expect(saved?.actualKm).toBe(6);
   expect(saved?.note).toBe("updated");
+});
+
+test("recordWorkoutFeedback persists event and updates derived preferences", () => {
+  const plan = createPlan(INPUTS, buildPlan(INPUTS));
+  savePlan(plan);
+  const session = plan.plan.weeks
+    .flatMap((week) => week.sessions)
+    .find((planned) => planned.type !== "rest" && planned.recipe_id && planned.recipe_family);
+
+  expect(session).toBeDefined();
+
+  const event = recordWorkoutFeedback(plan.id, "0-1", session!, "favourite");
+  const saved = getPlan(plan.id);
+  const latest = getWorkoutFeedbackForSession(plan.id, "0-1");
+  const preferences = getWorkoutPreferences(plan.id);
+
+  expect(saved?.workoutFeedback).toHaveLength(1);
+  expect(latest?.id).toBe(event.id);
+  expect(preferences).toHaveLength(1);
+  expect(preferences[0].recipeId).toBe(session!.recipe_id);
+  expect(preferences[0].score).toBe(2);
 });

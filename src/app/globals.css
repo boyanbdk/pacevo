@@ -233,6 +233,18 @@ button {
   color: #ffd7d7;
 }
 
+.button.selected-action {
+  border-color: rgba(40, 210, 174, 0.65);
+  background: rgba(40, 210, 174, 0.14);
+  color: var(--text);
+}
+
+.button:disabled,
+.select:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
 .app-layout {
   min-height: 100vh;
   display: grid;

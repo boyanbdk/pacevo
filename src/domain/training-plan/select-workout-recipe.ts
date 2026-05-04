@@ -12,6 +12,7 @@ import type {
   WorkoutContext,
   WorkoutRecipe,
 } from "./types";
+import { preferenceBiasForRecipe, type UserWorkoutPreference } from "./workout-preferences";
 
 export type RecipeSelectionTarget = RecipeSessionType | "quality";
 
@@ -22,6 +23,7 @@ export interface RecipeSelectionOptions {
   recentRecipeIds?: string[];
   trainingFocus?: TrainingFocus;
   difficultyPreference?: DifficultyPref;
+  preferences?: UserWorkoutPreference[];
   preferCutback?: boolean;
 }
 
@@ -115,6 +117,9 @@ function scoreRecipe(recipe: WorkoutRecipe, options: RecipeSelectionOptions): nu
   }
   if (ctx.goalRace === "marathon" && recipe.stimulus === "race_specific") {
     score += 1.5;
+  }
+  if (options.preferences?.length) {
+    score += preferenceBiasForRecipe(recipe.id, recipe.family, options.preferences);
   }
 
   const tieBreaker = hash01(`${recipe.id}:${ctx.goalRace}:${ctx.weekIndex}:${ctx.dayIndex}`);
