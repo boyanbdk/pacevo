@@ -131,13 +131,22 @@ export function renderIntensity(
   rpe: number | null,
   hrZones: HrZones,
   mode: IntensityMode,
-  options: { showEasyRunPaceTargets?: boolean } = {},
+  options: {
+    showEasyRunPaceTargets?: boolean;
+    easyPaceTarget?: string | null;
+    recoveryPaceTarget?: string | null;
+  } = {},
 ): IntensityDisplay {
   const recMode = RECOMMENDED_MODE[sessionType] ?? "pace";
+  const easyRunPaceStr = easyRunPaceTarget(sessionType, options);
   const suppressPace =
-    EASY_PACE_SUPPRESSED_TYPES.has(sessionType) && options.showEasyRunPaceTargets !== true;
+    EASY_PACE_SUPPRESSED_TYPES.has(sessionType) && easyRunPaceStr === null;
   const displayMode = suppressPace && mode === "pace" ? recMode : mode;
-  const paceStr = fmtPaceRange(paceLow, paceHigh);
+  const paceStr = EASY_PACE_SUPPRESSED_TYPES.has(sessionType)
+    ? easyRunPaceStr
+    : fmtPaceRange(paceLow, paceHigh);
+  const paceLabel = EASY_PACE_SUPPRESSED_TYPES.has(sessionType) ? "Pace setting" : "Target pace";
+  const paceSecondaryLabel = EASY_PACE_SUPPRESSED_TYPES.has(sessionType) ? "Pace (setting)" : "Pace (ref)";
   const rpeStr = fmtRpe(rpe, sessionType);
   const hrStr = hrBpmRange(hrZone, hrZones);
   const hrLabel = hrZone ? (HR_ZONE_LABELS[hrZone] ?? hrZone) : "HR target";
@@ -150,7 +159,7 @@ export function renderIntensity(
   if (displayMode === "pace") {
     return {
       displayMode,
-      primaryLabel: "Target pace",
+      primaryLabel: paceLabel,
       primaryValue: paceStr ?? "—",
       secondary: compact([
         rpeStr ? { label: "RPE", value: rpeStr } : null,
@@ -167,7 +176,7 @@ export function renderIntensity(
       primaryLabel: "RPE",
       primaryValue: rpeStr ?? "—",
       secondary: compact([
-        paceStr && !suppressPace ? { label: "Pace (ref)", value: paceStr } : null,
+        paceStr && !suppressPace ? { label: paceSecondaryLabel, value: paceStr } : null,
         hrStr && hrZone ? { label: hrZone, value: hrStr } : null,
       ]),
       warning,
@@ -182,9 +191,26 @@ export function renderIntensity(
     primaryValue: hrStr ?? "—",
     secondary: compact([
       rpeStr ? { label: "RPE", value: rpeStr } : null,
-      paceStr && !suppressPace ? { label: "Pace (ref)", value: paceStr } : null,
+      paceStr && !suppressPace ? { label: paceSecondaryLabel, value: paceStr } : null,
     ]),
     warning,
     recommendedMode: recMode,
   };
+}
+
+function easyRunPaceTarget(
+  sessionType: SessionType,
+  options: {
+    showEasyRunPaceTargets?: boolean;
+    easyPaceTarget?: string | null;
+    recoveryPaceTarget?: string | null;
+  },
+): string | null {
+  if (!EASY_PACE_SUPPRESSED_TYPES.has(sessionType) || options.showEasyRunPaceTargets !== true) {
+    return null;
+  }
+  const value = sessionType === "recovery" ? options.recoveryPaceTarget : options.easyPaceTarget;
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  return trimmed.includes("/") ? trimmed : `${trimmed} /km`;
 }

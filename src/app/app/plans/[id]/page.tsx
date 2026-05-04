@@ -13,6 +13,8 @@ import { formatShortPlanDate, formatWeekRange, formatWeekdayDate, parsePlanDate 
 import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
 import { applyAdaptation, getPlan, getWorkoutPreferences, logSession, updatePlanStatus } from "@/lib/plan-storage";
 import { exportPlanDocx, exportPlanPdf, exportPlanWeekImage } from "@/lib/export";
+import { getSettings } from "@/lib/storage";
+import type { UserSettings } from "@/domain/workout-schema";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -95,6 +97,12 @@ function countLoggedSessions(sessions: CompletedSession[], weekIndex?: number): 
     keys.add(`${session.weekIndex}-${session.dayIndex}`);
   }
   return keys.size;
+}
+
+function settingPaceLabel(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "—";
+  return trimmed.includes("/") ? trimmed : `${trimmed} /km`;
 }
 
 function currentWeekIndexForPlan(plan: SavedPlan): number {
@@ -484,7 +492,7 @@ function WeekCard({
 // Plan summary header
 // ---------------------------------------------------------------------------
 
-function PlanSummary({ plan }: { plan: SavedPlan }) {
+function PlanSummary({ plan, settings }: { plan: SavedPlan; settings: UserSettings }) {
   const { meta, paces, weeks } = plan.plan;
   const totalKm = weeks.reduce((s, w) => s + w.total_km, 0);
   const loggedCount = countLoggedSessions(plan.completedSessions);
@@ -505,9 +513,15 @@ function PlanSummary({ plan }: { plan: SavedPlan }) {
         </span>
       </div>
       <div className="panel">
-        <span className="muted">Paces</span>
-        <h2>{paces.E_low ? formatPace(paces.E_low) : "—"} easy</h2>
-        {paces.T && <span className="muted" style={{ fontSize: 13 }}>{formatPace(paces.T)} tempo</span>}
+        <span className="muted">Settings</span>
+        <h2>{settingPaceLabel(settings.defaultEasyPace)}</h2>
+        <span className="muted" style={{ fontSize: 13 }}>
+          Easy setting
+          {settings.defaultCooldownPace.trim()
+            ? ` · ${settingPaceLabel(settings.defaultCooldownPace)} recovery setting`
+            : ""}
+          {paces.T ? ` · ${formatPace(paces.T)} tempo` : ""}
+        </span>
       </div>
     </div>
   );
@@ -756,10 +770,12 @@ export default function PlanDetailPage() {
   const [tab, setTab] = useState<Tab>("plan");
   const [selectedEvent, setSelectedEvent] = useState<AdaptationEvent | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [settings, setSettings] = useState<UserSettings>(getSettings());
   const calRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const p = getPlan(id);
+    setSettings(getSettings());
     if (!p) { setLoaded(true); return; }
     setWeekIndex(currentWeekIndexForPlan(p));
     setPlan(p);
@@ -811,11 +827,11 @@ export default function PlanDetailPage() {
             <FileImage size={16} />
             PNG
           </button>
-          <button className="button ghost" title="Export full plan as PDF" onClick={() => exportPlanPdf(plan.plan)}>
+          <button className="button ghost" title="Export full plan as PDF" onClick={() => exportPlanPdf(plan.plan, settings)}>
             <FileText size={16} />
             PDF
           </button>
-          <button className="button ghost" title="Export full plan as DOCX" onClick={() => exportPlanDocx(plan.plan)}>
+          <button className="button ghost" title="Export full plan as DOCX" onClick={() => exportPlanDocx(plan.plan, settings)}>
             <Download size={16} />
             DOCX
           </button>
@@ -826,7 +842,7 @@ export default function PlanDetailPage() {
         </div>
       </div>
 
-      <PlanSummary plan={plan} />
+      <PlanSummary plan={plan} settings={settings} />
       {planWarnings.length > 0 && (
         <div className="plan-warnings panel" style={{ marginBottom: 18 }}>
           {planWarnings.map((warning, index) => (

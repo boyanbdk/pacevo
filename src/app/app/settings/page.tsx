@@ -32,10 +32,12 @@ export default function SettingsPage() {
           <div className="field">
             <label>Default easy/warm-up pace</label>
             <input className="input" value={settings.defaultEasyPace} onChange={(event) => setSettings({ ...settings, defaultEasyPace: event.target.value })} />
+            <span className="field-hint">Shown as your setting, not an auto-generated plan target.</span>
           </div>
           <div className="field">
             <label>Default recovery pace</label>
             <input className="input" value={settings.defaultCooldownPace} onChange={(event) => setSettings({ ...settings, defaultCooldownPace: event.target.value })} />
+            <span className="field-hint">Used when you choose to show easy and recovery targets.</span>
           </div>
           <div className="field">
             <label>Default walking speed</label>
@@ -67,7 +69,7 @@ export default function SettingsPage() {
             <option value="hr">Heart rate — show HR zone targets</option>
           </select>
           <span className="field-hint" style={{ marginTop: 4, display: "block" }}>
-            Training plans respect this setting. Tempo and interval sessions always show pace as a reference.
+            Training plans respect this setting. Easy and recovery runs use heart rate or RPE unless you opt into pace targets below.
           </span>
         </div>
         <label className="check-row">

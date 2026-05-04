@@ -67,7 +67,7 @@ const recoveryEasy: WorkoutRecipe = {
       description: "Recovery run. Very easy, Z1. Flush legs after hard effort.",
       rationale: "Easy recovery promotes blood flow and reduces soreness without adding meaningful stress.",
       warmup: null,
-      main_set: `${km.toFixed(1)} km very easy jog at Z1 (${fmtPace(ctx.paces.E_high)} /km or slower)`,
+      main_set: `${km.toFixed(1)} km very easy jog at Z1`,
       cooldown: null,
     };
   },
@@ -140,7 +140,7 @@ const easyRun: WorkoutRecipe = {
       description: "Easy aerobic run. Conversational pace, Z1–Z2.",
       rationale: "Most weekly running should feel conversational so you can build aerobic fitness without carrying extra fatigue.",
       warmup: null,
-      main_set: `${ctx.targetKm.toFixed(1)} km at easy pace (${fmtPace(ctx.paces.E_low)}–${fmtPace(ctx.paces.E_high)} /km)`,
+      main_set: `${ctx.targetKm.toFixed(1)} km easy at conversational effort, Z1-Z2`,
       cooldown: null,
     };
   },
@@ -212,7 +212,7 @@ const longEasy: WorkoutRecipe = {
       description: "Long easy run. Steady aerobic effort, Z2. Builds aerobic base and fat adaptation.",
       rationale: "The long run builds endurance while staying proportional to the rest of the week.",
       warmup: null,
-      main_set: `${ctx.targetKm.toFixed(1)} km at easy long-run pace (${fmtPace(ctx.paces.E_low)}–${fmtPace(ctx.paces.E_high)} /km)`,
+      main_set: `${ctx.targetKm.toFixed(1)} km steady easy long run, Z2`,
       cooldown: null,
     };
   },
@@ -248,7 +248,7 @@ const longFastFinish: WorkoutRecipe = {
       description: "Fast-finish long run. Easy start, finishing kilometres at marathon pace. Trains fatigue resistance.",
       rationale: "Finishing faster on tired legs builds race-specific endurance without making the whole run hard.",
       warmup: null,
-      main_set: `${easyKm.toFixed(1)} km easy (${fmtPace(ctx.paces.E_low)}–${fmtPace(ctx.paces.E_high)} /km), then ${fastKm.toFixed(1)} km at M pace (${fmtPace(mPace)} /km)`,
+      main_set: `${easyKm.toFixed(1)} km easy, then ${fastKm.toFixed(1)} km at M pace (${fmtPace(mPace)} /km)`,
       cooldown: null,
     };
   },

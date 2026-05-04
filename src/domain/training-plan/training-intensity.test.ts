@@ -23,11 +23,23 @@ describe("renderIntensity", () => {
   test("easy pace targets can be explicitly enabled", () => {
     const display = renderIntensity("easy", 360, 420, "Z2", 4, HR_ZONES, "pace", {
       showEasyRunPaceTargets: true,
+      easyPaceTarget: "6:40",
     });
 
     expect(display.displayMode).toBe("pace");
-    expect(display.primaryLabel).toBe("Target pace");
-    expect(display.primaryValue).toBe("6:00–7:00 /km");
+    expect(display.primaryLabel).toBe("Pace setting");
+    expect(display.primaryValue).toBe("6:40 /km");
+  });
+
+  test("recovery pace targets use user settings instead of derived paces", () => {
+    const display = renderIntensity("recovery", 390, 420, "Z1", 2, HR_ZONES, "pace", {
+      showEasyRunPaceTargets: true,
+      easyPaceTarget: "6:40",
+      recoveryPaceTarget: "7:05",
+    });
+
+    expect(display.displayMode).toBe("pace");
+    expect(display.primaryValue).toBe("7:05 /km");
   });
 
   test("hard sessions still expose pace as a reference in HR mode", () => {

@@ -23,6 +23,7 @@ import type { IntensityMode, PlannedSession, TrainingWeek } from "@/domain/train
 import type { WorkoutFeedbackReason, WorkoutFeedbackType } from "@/domain/training-plan/workout-preferences";
 import { formatFullPlanDate, parsePlanDate } from "@/lib/plan-dates";
 import type { CompletedSession, SavedPlan } from "@/lib/plan-storage";
+import type { UserSettings } from "@/domain/workout-schema";
 import {
   applyAdaptation,
   applyWorkoutSwap,
@@ -90,6 +91,12 @@ const DISLIKE_REASONS: { value: WorkoutFeedbackReason; label: string }[] = [
 ];
 
 const EASY_PACE_OPTIONAL_TYPES = new Set(["easy", "recovery"]);
+
+function settingPaceLabel(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return trimmed.includes("/") ? trimmed : `${trimmed} /km`;
+}
 
 // ---------------------------------------------------------------------------
 // Log form
@@ -497,10 +504,12 @@ export default function SessionDetailPage() {
   const [loaded, setLoaded] = useState(false);
   const [intensityMode, setIntensityMode] = useState<IntensityMode>("hr");
   const [showEasyRunPaceTargets, setShowEasyRunPaceTargets] = useState(false);
+  const [settings, setSettings] = useState<UserSettings>(getSettings());
 
   useEffect(() => {
     const p = getPlan(id);
     const settings = getSettings();
+    setSettings(settings);
     setShowEasyRunPaceTargets(settings.showEasyRunPaceTargets);
     setPlan(p ?? null);
     setLoaded(true);
@@ -526,8 +535,6 @@ export default function SessionDetailPage() {
   const existing = getCompletedSession(id, weekIndex, dayIndex);
   const paces = plan.plan.paces;
   const color = SESSION_COLORS[session.type] ?? "var(--muted)";
-  const showPaceReference =
-    !EASY_PACE_OPTIONAL_TYPES.has(session.type) || showEasyRunPaceTargets;
 
   const intensity = session.type !== "rest"
     ? renderIntensity(
@@ -538,9 +545,30 @@ export default function SessionDetailPage() {
         session.target_rpe,
         plan.plan.hr_zones,
         intensityMode,
-        { showEasyRunPaceTargets },
+        {
+          showEasyRunPaceTargets,
+          easyPaceTarget: settings.defaultEasyPace,
+          recoveryPaceTarget: settings.defaultCooldownPace,
+        },
       )
     : null;
+  const paceReferenceItems = [
+    showEasyRunPaceTargets && settingPaceLabel(settings.defaultEasyPace)
+      ? { label: "Easy setting", value: settingPaceLabel(settings.defaultEasyPace) }
+      : null,
+    showEasyRunPaceTargets && settingPaceLabel(settings.defaultCooldownPace)
+      ? { label: "Recovery setting", value: settingPaceLabel(settings.defaultCooldownPace) }
+      : null,
+    !EASY_PACE_OPTIONAL_TYPES.has(session.type) && paces.M
+      ? { label: "Marathon pace", value: formatPace(paces.M) }
+      : null,
+    !EASY_PACE_OPTIONAL_TYPES.has(session.type) && paces.T
+      ? { label: "Threshold", value: formatPace(paces.T) }
+      : null,
+    !EASY_PACE_OPTIONAL_TYPES.has(session.type) && paces.I
+      ? { label: "Interval", value: formatPace(paces.I) }
+      : null,
+  ].filter((item): item is { label: string; value: string } => item !== null);
 
   return (
     <>
@@ -713,32 +741,16 @@ export default function SessionDetailPage() {
       )}
 
       {/* Pace reference */}
-      {paces.E_low && showPaceReference && (
+      {paceReferenceItems.length > 0 && (
         <div className="panel" style={{ marginBottom: 18 }}>
           <h3 style={{ margin: "0 0 14px" }}>Pace reference</h3>
           <div className="pace-ref-grid">
-            <div>
-              <span className="muted">Easy</span>
-              <strong>{formatPace(paces.E_low)} – {formatPace(paces.E_high)}</strong>
-            </div>
-            {paces.M && (
-              <div>
-                <span className="muted">Marathon pace</span>
-                <strong>{formatPace(paces.M)}</strong>
+            {paceReferenceItems.map((item) => (
+              <div key={item.label}>
+                <span className="muted">{item.label}</span>
+                <strong>{item.value}</strong>
               </div>
-            )}
-            {paces.T && (
-              <div>
-                <span className="muted">Threshold</span>
-                <strong>{formatPace(paces.T)}</strong>
-              </div>
-            )}
-            {paces.I && (
-              <div>
-                <span className="muted">Interval</span>
-                <strong>{formatPace(paces.I)}</strong>
-              </div>
-            )}
+            ))}
           </div>
         </div>
       )}

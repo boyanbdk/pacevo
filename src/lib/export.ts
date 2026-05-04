@@ -12,8 +12,8 @@ import {
 } from "docx";
 import { toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
-import type { AdjustedWorkout } from "@/domain/workout-schema";
-import type { TrainingPlan } from "@/domain/training-plan/types";
+import type { AdjustedWorkout, UserSettings } from "@/domain/workout-schema";
+import type { PlannedSession, TrainingPlan } from "@/domain/training-plan/types";
 import { formatPlanDate, formatWeekRange, formatWeekdayDate } from "@/lib/plan-dates";
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -115,7 +115,36 @@ function fmtPace(s: number | null): string {
   return `${min}:${sec.toString().padStart(2, "0")}/km`;
 }
 
-export function exportPlanPdf(plan: TrainingPlan) {
+type PlanExportOptions = Pick<UserSettings, "defaultEasyPace" | "defaultCooldownPace" | "showEasyRunPaceTargets">;
+
+const EASY_PACE_OPTIONAL_TYPES = new Set(["easy", "recovery"]);
+
+function fmtSettingPace(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  return trimmed.includes("/") ? trimmed : `${trimmed}/km`;
+}
+
+function planPaceReference(plan: TrainingPlan, options?: PlanExportOptions): string {
+  return [
+    fmtSettingPace(options?.defaultEasyPace) ? `Easy setting: ${fmtSettingPace(options?.defaultEasyPace)}` : null,
+    fmtSettingPace(options?.defaultCooldownPace) ? `Recovery setting: ${fmtSettingPace(options?.defaultCooldownPace)}` : null,
+    plan.paces.T ? `Tempo: ${fmtPace(plan.paces.T)}` : null,
+    plan.paces.I ? `Intervals: ${fmtPace(plan.paces.I)}` : null,
+    plan.paces.M ? `MP: ${fmtPace(plan.paces.M)}` : null,
+  ].filter(Boolean).join("   ·   ");
+}
+
+function sessionPaceForExport(session: PlannedSession, options?: PlanExportOptions): string {
+  if (EASY_PACE_OPTIONAL_TYPES.has(session.type)) {
+    if (options?.showEasyRunPaceTargets !== true) return "";
+    const setting = session.type === "recovery" ? options.defaultCooldownPace : options.defaultEasyPace;
+    return fmtSettingPace(setting) ?? "";
+  }
+  return session.pace_low_s_km ? fmtPace(session.pace_low_s_km) : "";
+}
+
+export function exportPlanPdf(plan: TrainingPlan, options?: PlanExportOptions) {
   const pdf = new jsPDF({ unit: "pt", format: "a4" });
   const margin = 44;
   const pageWidth = 595;
@@ -158,12 +187,7 @@ export function exportPlanPdf(plan: TrainingPlan) {
   // Pace reference line
   pdf.setTextColor(200, 200, 200);
   pdf.setFontSize(9);
-  const paceItems = [
-    `Easy: ${fmtPace(plan.paces.E_low)}–${fmtPace(plan.paces.E_high)}`,
-    plan.paces.T ? `Tempo: ${fmtPace(plan.paces.T)}` : null,
-    plan.paces.I ? `Intervals: ${fmtPace(plan.paces.I)}` : null,
-    plan.paces.M ? `MP: ${fmtPace(plan.paces.M)}` : null,
-  ].filter(Boolean).join("   ·   ");
+  const paceItems = planPaceReference(plan, options);
   pdf.text(paceItems, margin, y);
   y += 24;
 
@@ -193,7 +217,7 @@ export function exportPlanPdf(plan: TrainingPlan) {
     pdf.setTextColor(180, 180, 180);
     for (const session of runningSessions) {
       const distStr = session.target_km ? `${session.target_km.toFixed(1)} km` : "";
-      const paceStr = session.pace_low_s_km ? fmtPace(session.pace_low_s_km) : "";
+      const paceStr = sessionPaceForExport(session, options);
       const detail = [distStr, paceStr].filter(Boolean).join(" · ");
       const label = PLAN_SESSION_LABELS[session.type] ?? session.type;
       const line = `  ${formatWeekdayDate(session.date)}   ${label}${detail ? "   " + detail : ""}`;
@@ -206,7 +230,7 @@ export function exportPlanPdf(plan: TrainingPlan) {
   pdf.save(`${slugify(PLAN_GOAL_LABELS[plan.meta.goal_race] ?? "plan")}-training-plan.pdf`);
 }
 
-export async function exportPlanDocx(plan: TrainingPlan) {
+export async function exportPlanDocx(plan: TrainingPlan, options?: PlanExportOptions) {
   const goalLabel = PLAN_GOAL_LABELS[plan.meta.goal_race] ?? plan.meta.goal_race;
   const goalDate = formatPlanDate(plan.meta.goal_date, {
     month: "long", day: "numeric", year: "numeric",
@@ -228,10 +252,7 @@ export async function exportPlanDocx(plan: TrainingPlan) {
     new Paragraph({
       children: [
         new TextRun({
-          text: `Paces — Easy: ${fmtPace(plan.paces.E_low)}–${fmtPace(plan.paces.E_high)}` +
-            (plan.paces.T ? `  |  Tempo: ${fmtPace(plan.paces.T)}` : "") +
-            (plan.paces.I ? `  |  Intervals: ${fmtPace(plan.paces.I)}` : "") +
-            (plan.paces.M ? `  |  MP: ${fmtPace(plan.paces.M)}` : ""),
+          text: `Paces — ${planPaceReference(plan, options)}`,
         }),
       ],
       spacing: { after: 300 },
@@ -268,7 +289,7 @@ export async function exportPlanDocx(plan: TrainingPlan) {
                 new TableCell({ children: [new Paragraph(formatWeekdayDate(session.date))] }),
                 new TableCell({ children: [new Paragraph(PLAN_SESSION_LABELS[session.type] ?? session.type)] }),
                 new TableCell({ children: [new Paragraph(session.target_km ? `${session.target_km.toFixed(1)} km` : "—")] }),
-                new TableCell({ children: [new Paragraph(session.pace_low_s_km ? fmtPace(session.pace_low_s_km) : "—")] }),
+                new TableCell({ children: [new Paragraph(sessionPaceForExport(session, options) || "—")] }),
                 new TableCell({ children: [new Paragraph(session.description ?? "")] }),
               ],
             }),

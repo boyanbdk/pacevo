@@ -20,7 +20,7 @@ import {
   getRecipesByFamily,
   getRecipesBySessionType,
 } from "./workout-recipes";
-import { pacesFromVdot } from "./vdot";
+import { formatPace, pacesFromVdot } from "./vdot";
 import type { WorkoutContext, Paces } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -118,6 +118,21 @@ describe("recovery recipes", () => {
     expect(s.type).toBe("easy");
     expect(s.hr_zone).toBe("Z2");
     expect(s.pace_low_s_km).toBeLessThan(s.pace_high_s_km!);
+  });
+
+  test("easy and recovery structure copy does not prescribe derived easy pace", () => {
+    const ctx = makeCtx({ targetKm: 10 });
+    const easyLow = formatPace(ctx.paces.E_low);
+    const easyHigh = formatPace(ctx.paces.E_high);
+    const copy = [
+      getRecipeById("recovery_easy_jog")!.build(ctx).main_set,
+      getRecipeById("easy_run")!.build(ctx).main_set,
+      getRecipeById("long_easy")!.build(ctx).main_set,
+      getRecipeById("long_fast_finish")!.build(ctx).main_set,
+    ].join("\n");
+
+    expect(copy).not.toContain(easyLow);
+    expect(copy).not.toContain(easyHigh);
   });
 
   test("easy_strides builds session with strides and higher RPE than easy_run", () => {
