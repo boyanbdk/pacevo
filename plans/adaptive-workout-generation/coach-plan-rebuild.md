@@ -12,7 +12,7 @@ The legacy plan remains useful as reference for the recipe system, preference lo
 
 This plan merges three sources:
 
-- Legacy plan: `plans/adaptive-workout-generation/implementation-plan.md`
+- Legacy plan: `plans/adaptive-workout-generation/legacy-implementation-plan.md`
 - Current app audit: training-plan domain, plan views, session detail, workout creation, storage, and tests
 - Product critique from the May 4, 2026 review:
   - plan view lacks visible dates
@@ -332,7 +332,7 @@ Docs:
 
 - `README.md`
 - `plans/adaptive-workout-generation/coach-plan-rebuild.md`
-- `plans/adaptive-workout-generation/implementation-plan.md`
+- `plans/adaptive-workout-generation/legacy-implementation-plan.md`
 
 ## Recommended Implementation Order
 

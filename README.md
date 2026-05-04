@@ -26,7 +26,8 @@ npm audit --omit=dev
 ### Planning Docs
 
 - Canonical execution plan: `plans/adaptive-workout-generation/coach-plan-rebuild.md`
-- Legacy reference plan: `plans/adaptive-workout-generation/implementation-plan.md`
+- Plan routing note: `plans/README.md`
+- Legacy reference plan: `plans/adaptive-workout-generation/legacy-implementation-plan.md`
 
 ### What the app includes
 
