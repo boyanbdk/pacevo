@@ -34,7 +34,7 @@ export default function SettingsPage() {
             <input className="input" value={settings.defaultEasyPace} onChange={(event) => setSettings({ ...settings, defaultEasyPace: event.target.value })} />
           </div>
           <div className="field">
-            <label>Default cool-down pace</label>
+            <label>Default recovery pace</label>
             <input className="input" value={settings.defaultCooldownPace} onChange={(event) => setSettings({ ...settings, defaultCooldownPace: event.target.value })} />
           </div>
           <div className="field">
@@ -70,6 +70,14 @@ export default function SettingsPage() {
             Training plans respect this setting. Tempo and interval sessions always show pace as a reference.
           </span>
         </div>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={settings.showEasyRunPaceTargets}
+            onChange={(event) => setSettings({ ...settings, showEasyRunPaceTargets: event.target.checked })}
+          />
+          <span>Show easy and recovery pace targets</span>
+        </label>
         <button className="button primary" type="submit">
           <Save size={17} />
           Save settings

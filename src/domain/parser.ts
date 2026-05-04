@@ -54,11 +54,11 @@ export function parseWorkoutText(raw: string): ParsedWorkout {
       return;
     }
 
-    if (/cool|down|cd\b/.test(lower) && distanceOnly) {
+    if (/cool|down|cd\b|recovery/.test(lower) && distanceOnly) {
       steps.push({
         id: makeId("cooldown", index),
         type: "cooldown",
-        label: "Cool down",
+        label: "Recovery",
         distanceKm: parseDistance(distanceOnly[1], distanceOnly[2]),
         targetPace: pace?.[1]
       });
@@ -87,7 +87,7 @@ export function parseWorkoutText(raw: string): ParsedWorkout {
   });
 
   if (!steps.some((step) => step.type === "warmup")) uncertaintyFlags.add("missing warm-up");
-  if (!steps.some((step) => step.type === "cooldown")) uncertaintyFlags.add("missing cool-down");
+  if (!steps.some((step) => step.type === "cooldown")) uncertaintyFlags.add("missing recovery");
   if (steps.length === 0) uncertaintyFlags.add("unknown workout type");
 
   return {

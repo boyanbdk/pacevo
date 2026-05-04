@@ -212,6 +212,8 @@ Verification added:
 
 ### Phase 4: Intensity Defaults And Recovery Naming
 
+Status: implemented on May 4, 2026.
+
 Goal: make easy effort guidance match how runners should execute easy days.
 
 Tasks:
@@ -238,6 +240,13 @@ Likely files:
 - `src/app/app/plans/new/page.tsx`
 - `src/app/app/plans/[id]/sessions/[sessionId]/page.tsx`
 - `src/domain/training-plan/training-intensity.ts`
+
+Verification added:
+
+- `src/lib/storage.test.ts` covers HR default settings, the easy/recovery pace-target toggle, and legacy `defaultCooldownPace` loading.
+- `src/domain/training-plan/training-intensity.test.ts` covers easy-run pace suppression, explicit pace opt-in, and hard-session pace reference behavior.
+- `src/domain/run-tailor.test.ts` covers Recovery labeling for tailored workouts and parsed recovery distance.
+- `npm test` and `npm run build` passed after implementation.
 
 ### Phase 5: Race Estimate Input Rebuild
 

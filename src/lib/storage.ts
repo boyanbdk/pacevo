@@ -7,7 +7,8 @@ export const defaultSettings: UserSettings = {
   preferredOutputMode: "treadmill-time",
   preferredDisplayStyle: "table",
   brandTheme: "volt",
-  intensityMode: "pace",
+  intensityMode: "hr",
+  showEasyRunPaceTargets: false,
 };
 
 export type LocalUser = {
@@ -34,7 +35,14 @@ export function clearUser() {
 }
 
 export function getSettings(): UserSettings {
-  return { ...defaultSettings, ...readJson<Partial<UserSettings>>(settingsKey, {}) };
+  const saved = readJson<Partial<UserSettings>>(settingsKey, {});
+  return {
+    ...defaultSettings,
+    ...saved,
+    defaultCooldownPace: saved.defaultCooldownPace ?? defaultSettings.defaultCooldownPace,
+    intensityMode: saved.intensityMode ?? defaultSettings.intensityMode,
+    showEasyRunPaceTargets: saved.showEasyRunPaceTargets ?? defaultSettings.showEasyRunPaceTargets,
+  };
 }
 
 export function saveSettings(settings: UserSettings) {

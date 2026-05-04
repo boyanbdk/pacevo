@@ -89,4 +89,5 @@ export type UserSettings = {
   preferredDisplayStyle: DisplayStyle;
   brandTheme: "volt";
   intensityMode: "pace" | "rpe" | "hr";
+  showEasyRunPaceTargets: boolean;
 };

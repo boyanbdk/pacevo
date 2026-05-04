@@ -176,7 +176,7 @@ function tailorStep(step: WorkoutStep, inputs: TailoringInputs): AdjustedStep[] 
 
 function labelKind(type: WorkoutStep["type"]): string {
   if (type === "warmup") return "Warm-up";
-  if (type === "cooldown") return "Cool down";
+  if (type === "cooldown") return "Recovery";
   return "Run";
 }
 

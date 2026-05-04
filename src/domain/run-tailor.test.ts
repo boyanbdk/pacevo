@@ -80,5 +80,13 @@ describe("tailorWorkout", () => {
     expect(result.steps[0].target).toContain("9.0 km/h (6:40/km) for 800 sec");
     expect(result.steps[1].target).toContain("14.4 km/h (4:10/km) for 200 sec");
     expect(result.steps[2].target).toBe("5.0 km/h walk for 90 sec");
+    expect(result.steps.at(-1)?.kind).toBe("Recovery");
+  });
+
+  it("labels parsed recovery distance as recovery", () => {
+    const parsed = parseWorkoutText("Recovery 1 km");
+
+    expect(parsed.steps[0].type).toBe("cooldown");
+    expect(parsed.steps[0].label).toBe("Recovery");
   });
 });

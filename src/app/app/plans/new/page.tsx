@@ -6,6 +6,7 @@ import { useState } from "react";
 import { buildPlan } from "@/domain/training-plan/build-plan";
 import type { DifficultyPref, GoalRace, IntensityMode, Level, PlanInputs, Surface, TrainingFocus, VolumePref } from "@/domain/training-plan/types";
 import { createPlan, savePlan } from "@/lib/plan-storage";
+import { getSettings } from "@/lib/storage";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,7 +55,7 @@ const INITIAL: FormState = {
   trainingFocus: "balanced",
   volumePref: "steady",
   difficultyPref: "balanced",
-  intensityMode: "pace",
+  intensityMode: "hr",
   daysPerWeek: "4",
   sessionMinutesCap: "",
   longRunDay: "saturday",
@@ -64,6 +65,13 @@ const INITIAL: FormState = {
   maxHR: "",
   injuryFlags: "",
 };
+
+function initialFormState(): FormState {
+  return {
+    ...INITIAL,
+    intensityMode: getSettings().intensityMode,
+  };
+}
 
 const GOAL_OPTIONS: { value: GoalRace; label: string; sub: string }[] = [
   { value: "5K", label: "5K", sub: "5 kilometres" },
@@ -535,7 +543,7 @@ function canProceed(step: number, s: FormState): boolean {
 export default function NewPlanPage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
-  const [form, setForm] = useState<FormState>(INITIAL);
+  const [form, setForm] = useState<FormState>(initialFormState);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
 

@@ -198,7 +198,7 @@ export default function NewWorkoutPage() {
                 <input className="input" value={inputs.easyPace} onChange={(event) => setInputs({ ...inputs, easyPace: event.target.value })} />
               </div>
               <div className="field">
-                <label>Cool-down pace</label>
+                <label>Recovery pace</label>
                 <input className="input" value={inputs.cooldownPace} onChange={(event) => setInputs({ ...inputs, cooldownPace: event.target.value })} />
               </div>
               <div className="field">

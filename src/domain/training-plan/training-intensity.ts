@@ -109,6 +109,7 @@ export function fmtRpe(rpe: number | null, type: SessionType): string | null {
 export type SecondaryItem = { label: string; value: string };
 
 export type IntensityDisplay = {
+  displayMode: IntensityMode;
   // What to show large at the top of the session card
   primaryLabel: string;
   primaryValue: string;
@@ -120,6 +121,8 @@ export type IntensityDisplay = {
   recommendedMode: IntensityMode;
 };
 
+const EASY_PACE_SUPPRESSED_TYPES = new Set<SessionType>(["easy", "recovery"]);
+
 export function renderIntensity(
   sessionType: SessionType,
   paceLow: number | null,
@@ -128,20 +131,25 @@ export function renderIntensity(
   rpe: number | null,
   hrZones: HrZones,
   mode: IntensityMode,
+  options: { showEasyRunPaceTargets?: boolean } = {},
 ): IntensityDisplay {
   const recMode = RECOMMENDED_MODE[sessionType] ?? "pace";
+  const suppressPace =
+    EASY_PACE_SUPPRESSED_TYPES.has(sessionType) && options.showEasyRunPaceTargets !== true;
+  const displayMode = suppressPace && mode === "pace" ? recMode : mode;
   const paceStr = fmtPaceRange(paceLow, paceHigh);
   const rpeStr = fmtRpe(rpe, sessionType);
   const hrStr = hrBpmRange(hrZone, hrZones);
   const hrLabel = hrZone ? (HR_ZONE_LABELS[hrZone] ?? hrZone) : "HR target";
   const warning =
-    mode === "hr" && HR_LAG_TYPES.has(sessionType) ? HR_LAG_WARNING : null;
+    displayMode === "hr" && HR_LAG_TYPES.has(sessionType) ? HR_LAG_WARNING : null;
 
   const compact = <T,>(items: (T | null | undefined)[]): T[] =>
     items.filter((x): x is T => x != null);
 
-  if (mode === "pace") {
+  if (displayMode === "pace") {
     return {
+      displayMode,
       primaryLabel: "Target pace",
       primaryValue: paceStr ?? "—",
       secondary: compact([
@@ -153,12 +161,13 @@ export function renderIntensity(
     };
   }
 
-  if (mode === "rpe") {
+  if (displayMode === "rpe") {
     return {
+      displayMode,
       primaryLabel: "RPE",
       primaryValue: rpeStr ?? "—",
       secondary: compact([
-        paceStr ? { label: "Pace (ref)", value: paceStr } : null,
+        paceStr && !suppressPace ? { label: "Pace (ref)", value: paceStr } : null,
         hrStr && hrZone ? { label: hrZone, value: hrStr } : null,
       ]),
       warning,
@@ -168,11 +177,12 @@ export function renderIntensity(
 
   // hr mode
   return {
+    displayMode,
     primaryLabel: hrLabel,
     primaryValue: hrStr ?? "—",
     secondary: compact([
       rpeStr ? { label: "RPE", value: rpeStr } : null,
-      paceStr ? { label: "Pace (ref)", value: paceStr } : null,
+      paceStr && !suppressPace ? { label: "Pace (ref)", value: paceStr } : null,
     ]),
     warning,
     recommendedMode: recMode,

@@ -33,6 +33,7 @@ import {
   logSession,
   recordWorkoutFeedback,
 } from "@/lib/plan-storage";
+import { getSettings } from "@/lib/storage";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -87,6 +88,8 @@ const DISLIKE_REASONS: { value: WorkoutFeedbackReason; label: string }[] = [
   { value: "schedule_fit", label: "Did not fit schedule" },
   { value: "other", label: "Other" },
 ];
+
+const EASY_PACE_OPTIONAL_TYPES = new Set(["easy", "recovery"]);
 
 // ---------------------------------------------------------------------------
 // Log form
@@ -492,10 +495,13 @@ export default function SessionDetailPage() {
   const { id, sessionId } = useParams<{ id: string; sessionId: string }>();
   const [plan, setPlan] = useState<SavedPlan | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [intensityMode, setIntensityMode] = useState<IntensityMode>("pace");
+  const [intensityMode, setIntensityMode] = useState<IntensityMode>("hr");
+  const [showEasyRunPaceTargets, setShowEasyRunPaceTargets] = useState(false);
 
   useEffect(() => {
     const p = getPlan(id);
+    const settings = getSettings();
+    setShowEasyRunPaceTargets(settings.showEasyRunPaceTargets);
     setPlan(p ?? null);
     setLoaded(true);
     // Initialise mode from plan preference
@@ -520,6 +526,8 @@ export default function SessionDetailPage() {
   const existing = getCompletedSession(id, weekIndex, dayIndex);
   const paces = plan.plan.paces;
   const color = SESSION_COLORS[session.type] ?? "var(--muted)";
+  const showPaceReference =
+    !EASY_PACE_OPTIONAL_TYPES.has(session.type) || showEasyRunPaceTargets;
 
   const intensity = session.type !== "rest"
     ? renderIntensity(
@@ -530,6 +538,7 @@ export default function SessionDetailPage() {
         session.target_rpe,
         plan.plan.hr_zones,
         intensityMode,
+        { showEasyRunPaceTargets },
       )
     : null;
 
@@ -595,9 +604,9 @@ export default function SessionDetailPage() {
         {/* Primary intensity metric — large */}
         {intensity && (
           <div className="panel session-metric" style={{ gridColumn: session.target_km ? undefined : "1 / -1" }}>
-            {intensityMode === "pace" && <Zap size={18} style={{ color }} />}
-            {intensityMode === "hr" && <Heart size={18} style={{ color }} />}
-            {intensityMode === "rpe" && (
+            {intensity.displayMode === "pace" && <Zap size={18} style={{ color }} />}
+            {intensity.displayMode === "hr" && <Heart size={18} style={{ color }} />}
+            {intensity.displayMode === "rpe" && (
               <span style={{ fontSize: 18, fontWeight: 900, color }}>RPE</span>
             )}
             <strong>{intensity.primaryValue}</strong>
@@ -695,7 +704,7 @@ export default function SessionDetailPage() {
             )}
             {session.cooldown && (
               <div className="session-block">
-                <span className="session-block-label">Cool-down</span>
+                <span className="session-block-label">Recovery</span>
                 <p>{session.cooldown}</p>
               </div>
             )}
@@ -704,7 +713,7 @@ export default function SessionDetailPage() {
       )}
 
       {/* Pace reference */}
-      {paces.E_low && (
+      {paces.E_low && showPaceReference && (
         <div className="panel" style={{ marginBottom: 18 }}>
           <h3 style={{ margin: "0 0 14px" }}>Pace reference</h3>
           <div className="pace-ref-grid">

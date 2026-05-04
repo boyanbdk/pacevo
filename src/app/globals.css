@@ -1085,6 +1085,20 @@ button {
   color: var(--muted);
 }
 
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.check-row input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--brand-2);
+}
+
 .grid-2-equal {
   display: grid;
   grid-template-columns: 1fr 1fr;
