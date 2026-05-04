@@ -121,7 +121,18 @@ function round1(n: number): number {
 // ---------------------------------------------------------------------------
 
 function splitPhases(weeksTotal: number, taperWeeks: number): Phase[] {
-  const remaining = weeksTotal - taperWeeks;
+  if (weeksTotal <= 0) return [];
+  if (weeksTotal === 1) return ["taper"];
+
+  const effectiveTaperWeeks = Math.min(taperWeeks, Math.max(1, weeksTotal - 1));
+  const remaining = weeksTotal - effectiveTaperWeeks;
+  if (weeksTotal <= taperWeeks + 1) {
+    return [
+      ...Array(remaining).fill("peak" as Phase),
+      ...Array(effectiveTaperWeeks).fill("taper" as Phase),
+    ];
+  }
+
   let peakWeeks = Math.max(1, Math.round(0.20 * weeksTotal));
   let buildWeeks = Math.max(1, Math.round(0.40 * weeksTotal));
   let baseWeeks = Math.max(1, remaining - peakWeeks - buildWeeks);
@@ -136,11 +147,11 @@ function splitPhases(weeksTotal: number, taperWeeks: number): Phase[] {
     ...Array(baseWeeks).fill("base" as Phase),
     ...Array(buildWeeks).fill("build" as Phase),
     ...Array(peakWeeks).fill("peak" as Phase),
-    ...Array(taperWeeks).fill("taper" as Phase),
+    ...Array(effectiveTaperWeeks).fill("taper" as Phase),
   ];
 
   while (phases.length < weeksTotal) {
-    phases.splice(phases.length - taperWeeks, 0, "build");
+    phases.splice(phases.length - effectiveTaperWeeks, 0, "build");
   }
 
   return phases.slice(0, weeksTotal);
@@ -654,17 +665,12 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
 
   // 4. Plan length
   const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-  const weeksTotal = Math.max(1, Math.floor((goalDateObj.getTime() - today.getTime()) / msPerWeek));
+  const weeksTotal = Math.max(1, Math.ceil((goalDateObj.getTime() - today.getTime()) / msPerWeek));
   const taperWks = TAPER_WEEKS[goal_race];
   const minWks = MIN_WEEKS[goal_race][level];
-
-  if (weeksTotal < minWks) {
-    throw new Error(
-      `Only ${weeksTotal} weeks until ${goal_date}. ` +
-      `A ${level} ${goal_race} plan needs at least ${minWks} weeks. ` +
-      `Please choose a later goal date or a shorter race distance.`
-    );
-  }
+  const shortRunwayWarning = weeksTotal < minWks
+    ? `Short runway - focus on safe sharpening. Only ${weeksTotal} week${weeksTotal === 1 ? "" : "s"} until ${goal_date}; a typical ${level} ${goal_race} plan uses at least ${minWks} weeks, so this plan prioritizes safe race prep over fitness building.`
+    : null;
 
   // 5. Phases + volume
   const phases = splitPhases(weeksTotal, taperWks);
@@ -784,6 +790,7 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
 
   // 8. Validate
   const warnings = [
+    ...(shortRunwayWarning ? [shortRunwayWarning] : []),
     ...(current_weekly_km < levelFloorKm
       ? [`Your recent ${current_weekly_km.toFixed(0)} km/week is below the usual ${level} ${goal_race} starting range. This plan starts from your real baseline and builds conservatively.`]
       : []),
@@ -795,7 +802,8 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
       : []),
     ...validatePlan(weeks, volumes),
   ];
-  const actualPeakWeeklyKm = Math.max(...volumes.filter((_, i) => phases[i] !== "taper"));
+  const nonTaperVolumes = volumes.filter((_, i) => phases[i] !== "taper");
+  const actualPeakWeeklyKm = Math.max(...(nonTaperVolumes.length > 0 ? nonTaperVolumes : volumes));
 
   return {
     meta: {

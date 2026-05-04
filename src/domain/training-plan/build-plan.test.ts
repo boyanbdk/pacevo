@@ -294,12 +294,39 @@ test("advanced marathon plan has ≥1.5 quality sessions/wk in non-deload peak w
   expect(avgQuality).toBeGreaterThanOrEqual(1.5);
 });
 
-test("too-short plan throws", () => {
+test("too-short plan generates with a short-runway warning", () => {
   const soon = new Date();
   soon.setDate(soon.getDate() + 7 * 8); // only 8 weeks for marathon
   const inputs: PlanInputs = { ...ADVANCED_MARATHON, goal_date: soon.toISOString().slice(0, 10) };
-  expect(() => buildPlan(inputs)).toThrow(/weeks/i);
+  const plan = buildPlan(inputs);
+
+  expect(plan.weeks.length).toBeGreaterThan(0);
+  expect(plan.warnings.join("\n")).toMatch(/Short runway - focus on safe sharpening/);
 });
+
+test.each(GOALS.flatMap((goalRace) => [2, 3, 4].map((weeks) => ({ goalRace, weeks }))))(
+  "$weeks-week $goalRace plan generates instead of blocking",
+  ({ goalRace, weeks }) => {
+    const plan = buildPlan({
+      goal_race: goalRace,
+      goal_date: futureDate(weeks),
+      current_weekly_km: 40,
+      longest_recent_km: goalRace === "marathon" ? 18 : 10,
+      age: 34,
+      days_per_week: 4,
+      recent_race: null,
+      surface: "road",
+      injury_flags: [],
+      self_selected_level: "beginner",
+    });
+
+    expect(plan.meta.goal_race).toBe(goalRace);
+    expect(plan.meta.weeks_total).toBe(weeks);
+    expect(plan.weeks).toHaveLength(weeks);
+    expect(plan.weeks.at(-1)?.phase).toBe("taper");
+    expect(plan.warnings.join("\n")).toMatch(/Short runway - focus on safe sharpening/);
+  },
+);
 
 test("output is deterministic", () => {
   const p1 = buildPlan(INTERMEDIATE_HALF);

@@ -90,7 +90,7 @@ const GOAL_OPTIONS: { value: GoalRace; label: string; sub: string }[] = [
   { value: "marathon", label: "Marathon", sub: "42.2 km" },
 ];
 
-// Minimum plan lengths per goal (weeks) – used to block impossible dates
+// Typical plan lengths per goal (weeks). Shorter dates warn but still generate.
 const MIN_WEEKS: Record<GoalRace, number> = {
   "5K": 6, "10K": 8, half: 10, marathon: 12,
 };
@@ -110,18 +110,26 @@ function hmsToSeconds(h: string, m: string, s: string): number | null {
 }
 
 function weeksUntil(dateStr: string): number {
-  const goal = new Date(dateStr);
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const goal = new Date(year, month - 1, day);
   const today = new Date();
-  return Math.floor((goal.getTime() - today.getTime()) / (7 * 86400000));
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((goal.getTime() - today.getTime()) / (7 * 86400000));
 }
 
 function infeasibleReason(state: FormState): string | null {
   if (!state.goalRace || !state.goalDate) return null;
   const weeks = weeksUntil(state.goalDate);
-  const min = MIN_WEEKS[state.goalRace as GoalRace];
   if (weeks < 0) return "The goal date is in the past.";
+  return null;
+}
+
+function shortRunwayWarning(state: FormState): string | null {
+  if (!state.goalRace || !state.goalDate) return null;
+  const weeks = Math.max(1, weeksUntil(state.goalDate));
+  const min = MIN_WEEKS[state.goalRace as GoalRace];
   if (weeks < min) {
-    return `A ${state.goalRace} plan needs at least ${min} weeks. Your date gives ${weeks} week${weeks === 1 ? "" : "s"}. Try a later date or a shorter goal.`;
+    return `Short runway - focus on safe sharpening. Your date gives ${weeks} week${weeks === 1 ? "" : "s"}; a typical ${state.goalRace} plan uses ${min}+ weeks. You can continue, but the plan will prioritize race prep over fitness building.`;
   }
   return null;
 }
@@ -132,6 +140,7 @@ function infeasibleReason(state: FormState): string | null {
 
 function Step1({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void }) {
   const reason = infeasibleReason(s);
+  const warning = shortRunwayWarning(s);
   return (
     <div className="stack">
       <div>
@@ -164,6 +173,12 @@ function Step1({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void 
         <div className="plan-warn">
           <AlertCircle size={16} />
           <span>{reason}</span>
+        </div>
+      )}
+      {!reason && warning && (
+        <div className="plan-warn">
+          <AlertCircle size={16} />
+          <span>{warning}</span>
         </div>
       )}
     </div>
