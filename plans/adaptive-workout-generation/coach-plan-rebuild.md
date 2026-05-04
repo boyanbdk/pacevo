@@ -93,6 +93,8 @@ Implementation implication:
 
 ### Phase 1: Mileage Engine Rebuild
 
+Status: implemented on May 4, 2026.
+
 Goal: make generated plans physiologically plausible and trustworthy.
 
 Tasks:
@@ -128,6 +130,11 @@ Acceptance criteria:
 - `volume_preference` changes the generated curve in tests.
 - `session_minutes_cap` changes session layout or produces a blocking warning.
 - No generated warnings contain source citations.
+
+Verification added:
+
+- `src/domain/training-plan/build-plan.test.ts` covers low-mileage week-one baseline, volume preference effects, session cap effects, pre-taper peak timing, and warning copy.
+- `npm test` and `npm run build` passed after implementation.
 
 Likely files:
 

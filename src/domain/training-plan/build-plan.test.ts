@@ -447,3 +447,102 @@ test.each(GOALS)("golden %s plans provide varied quality workouts across a full 
 
   expect(new Set(qualityIds).size).toBeGreaterThanOrEqual(Math.min(3, qualityIds.length));
 });
+
+// ---------------------------------------------------------------------------
+// Coach plan rebuild Phase 1 — mileage engine regression coverage
+// ---------------------------------------------------------------------------
+
+test("low-mileage runner starts from recent weekly average instead of race floor", () => {
+  const plan = buildPlan({
+    ...BEGINNER_5K,
+    goal_race: "marathon",
+    goal_date: futureDate(22),
+    current_weekly_km: 20,
+    longest_recent_km: 17,
+    recent_race: { distance_m: 5000, time_s: 23 * 60 },
+    estimated_race_time_s: null,
+    days_per_week: 4,
+    self_selected_level: "beginner",
+    volume_preference: "steady",
+  });
+
+  expect(plan.meta.level).toBe("beginner");
+  expect(plan.weeks[0].total_km).toBe(20);
+  expect(plan.warnings.some((warning) => warning.includes("real baseline"))).toBe(true);
+});
+
+test("supported volume preferences produce distinct peak volumes", () => {
+  const base: PlanInputs = {
+    ...INTERMEDIATE_HALF,
+    goal_date: futureDate(18),
+    current_weekly_km: 50,
+    longest_recent_km: 18,
+    self_selected_level: "intermediate",
+    difficulty_preference: "balanced",
+  };
+
+  const gradual = buildPlan({ ...base, volume_preference: "gradual" });
+  const steady = buildPlan({ ...base, volume_preference: "steady" });
+  const progressive = buildPlan({ ...base, volume_preference: "progressive" });
+
+  expect(gradual.meta.peak_weekly_km).toBeLessThan(steady.meta.peak_weekly_km);
+  expect(steady.meta.peak_weekly_km).toBeLessThanOrEqual(progressive.meta.peak_weekly_km);
+});
+
+test("session minutes cap constrains weekly volume and records a user-facing warning", () => {
+  const uncapped = buildPlan({
+    ...INTERMEDIATE_HALF,
+    goal_date: futureDate(18),
+    current_weekly_km: 50,
+    longest_recent_km: 18,
+    days_per_week: 4,
+    session_minutes_cap: null,
+  });
+  const capped = buildPlan({
+    ...INTERMEDIATE_HALF,
+    goal_date: futureDate(18),
+    current_weekly_km: 50,
+    longest_recent_km: 18,
+    days_per_week: 4,
+    session_minutes_cap: 35,
+  });
+
+  expect(capped.meta.peak_weekly_km).toBeLessThan(uncapped.meta.peak_weekly_km);
+  expect(capped.warnings.some((warning) => warning.includes("session limit is 35 minutes"))).toBe(true);
+});
+
+test("highest non-taper mileage happens before taper and exceeds early base when unconstrained", () => {
+  const plan = buildPlan({
+    ...INTERMEDIATE_HALF,
+    goal_date: futureDate(20),
+    current_weekly_km: 45,
+    longest_recent_km: 16,
+    self_selected_level: "intermediate",
+    volume_preference: "steady",
+  });
+  const taperStart = plan.weeks.findIndex((week) => week.phase === "taper");
+  const nonTaperVolumes = plan.weeks
+    .filter((week) => week.phase !== "taper")
+    .map((week) => week.total_km);
+  const peak = Math.max(...nonTaperVolumes);
+  const peakIndex = plan.weeks.findIndex((week) => week.total_km === peak);
+
+  expect(taperStart).toBeGreaterThan(0);
+  expect(peakIndex).toBeLessThan(taperStart);
+  expect(peak).toBeGreaterThan(plan.weeks[0].total_km);
+});
+
+test("generated plan warnings do not expose source citations", () => {
+  const plan = buildPlan({
+    ...BEGINNER_5K,
+    goal_race: "marathon",
+    goal_date: futureDate(20),
+    current_weekly_km: 18,
+    longest_recent_km: 12,
+    self_selected_level: "beginner",
+    session_minutes_cap: 30,
+  });
+
+  expect(plan.warnings.length).toBeGreaterThan(0);
+  expect(plan.warnings.join("\n")).not.toMatch(/Source:/);
+});

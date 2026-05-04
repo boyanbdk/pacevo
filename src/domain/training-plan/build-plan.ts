@@ -36,6 +36,30 @@ const PROGRESSION_RATE: Record<Level, number> = {
   beginner: 0.07, intermediate: 0.09, advanced: 0.11,
 };
 
+const VOLUME_RATE_MULTIPLIER: Record<NonNullable<PlanInputs["volume_preference"]>, number> = {
+  gradual: 0.75,
+  steady: 1.0,
+  progressive: 1.15,
+};
+
+const VOLUME_PEAK_MULTIPLIER: Record<NonNullable<PlanInputs["volume_preference"]>, number> = {
+  gradual: 0.75,
+  steady: 0.9,
+  progressive: 1.0,
+};
+
+const DIFFICULTY_RATE_MULTIPLIER: Record<NonNullable<PlanInputs["difficulty_preference"]>, number> = {
+  comfortable: 0.85,
+  balanced: 1.0,
+  challenging: 1.1,
+};
+
+const DIFFICULTY_PEAK_MULTIPLIER: Record<NonNullable<PlanInputs["difficulty_preference"]>, number> = {
+  comfortable: 0.85,
+  balanced: 1.0,
+  challenging: 1.08,
+};
+
 const DELOAD_EVERY_N_WEEKS = 4;
 const DELOAD_FACTOR = 0.75;
 const TAPER_VOLUME_FACTOR = 0.50;
@@ -129,30 +153,15 @@ function buildVolumeCurve(
   startKm: number,
   peakKm: number,
   weeksTotal: number,
-  level: Level,
+  progressionRate: number,
   phases: Phase[],
 ): number[] {
   const taperStart = phases.indexOf("taper");
   const effectiveTaperStart = taperStart === -1 ? weeksTotal : taperStart;
   const taperCount = weeksTotal - effectiveTaperStart;
-
-  // Pre-compute actual peak from non-taper progression
-  let current = startKm;
   let loadWkCount = 0;
+  let lastLoadVolume = startKm;
   let actualPeak = startKm;
-  for (let i = 0; i < effectiveTaperStart; i++) {
-    loadWkCount++;
-    if (loadWkCount % DELOAD_EVERY_N_WEEKS === 0) {
-      current = round1(current * DELOAD_FACTOR);
-    } else {
-      current = round1(Math.min(current * (1 + PROGRESSION_RATE[level]), peakKm));
-    }
-    if (current > actualPeak) actualPeak = current;
-  }
-
-  // Build full curve
-  current = startKm;
-  loadWkCount = 0;
   const volumes: number[] = [];
 
   for (let i = 0; i < weeksTotal; i++) {
@@ -173,16 +182,123 @@ function buildVolumeCurve(
       volumes.push(vol);
     } else {
       loadWkCount++;
-      if (loadWkCount % DELOAD_EVERY_N_WEEKS === 0) {
-        current = round1(current * DELOAD_FACTOR);
+      let vol: number;
+      if (i === 0) {
+        vol = startKm;
+      } else if (loadWkCount % DELOAD_EVERY_N_WEEKS === 0) {
+        vol = round1(lastLoadVolume * DELOAD_FACTOR);
       } else {
-        current = round1(Math.min(current * (1 + PROGRESSION_RATE[level]), peakKm));
+        vol = round1(Math.min(lastLoadVolume * (1 + progressionRate), peakKm));
+        lastLoadVolume = vol;
+        actualPeak = Math.max(actualPeak, vol);
       }
-      volumes.push(current);
+      volumes.push(vol);
     }
   }
 
   return volumes;
+}
+
+function deloadFlagsForPhases(phases: Phase[]): boolean[] {
+  let loadWeekCounter = 0;
+  return phases.map((phase) => {
+    if (phase === "taper") return false;
+    loadWeekCounter++;
+    return loadWeekCounter % DELOAD_EVERY_N_WEEKS === 0;
+  });
+}
+
+function progressionRateForInputs(
+  level: Level,
+  volumePreference: NonNullable<PlanInputs["volume_preference"]>,
+  difficultyPreference: NonNullable<PlanInputs["difficulty_preference"]>,
+  injuryFlags: string[],
+  progressiveSupported: boolean,
+): number {
+  const volumeMultiplier = volumePreference === "progressive" && !progressiveSupported
+    ? 1.0
+    : VOLUME_RATE_MULTIPLIER[volumePreference];
+  const injuryMultiplier = injuryFlags.length > 0 ? 0.65 : 1.0;
+  return PROGRESSION_RATE[level]
+    * volumeMultiplier
+    * DIFFICULTY_RATE_MULTIPLIER[difficultyPreference]
+    * injuryMultiplier;
+}
+
+function sustainablePeakKm(args: {
+  currentWeeklyKm: number;
+  racePeakKm: number;
+  levelFloorKm: number;
+  weeksTotal: number;
+  phases: Phase[];
+  progressionRate: number;
+  volumePreference: NonNullable<PlanInputs["volume_preference"]>;
+  difficultyPreference: NonNullable<PlanInputs["difficulty_preference"]>;
+  injuryFlags: string[];
+  progressiveSupported: boolean;
+}): number {
+  const {
+    currentWeeklyKm,
+    racePeakKm,
+    levelFloorKm,
+    weeksTotal,
+    phases,
+    progressionRate,
+    volumePreference,
+    difficultyPreference,
+    injuryFlags,
+    progressiveSupported,
+  } = args;
+
+  const volumePeakMultiplier = volumePreference === "progressive" && !progressiveSupported
+    ? VOLUME_PEAK_MULTIPLIER.steady
+    : VOLUME_PEAK_MULTIPLIER[volumePreference];
+  const injuryMultiplier = injuryFlags.length > 0 ? 0.8 : 1.0;
+  const ambitionCap = Math.max(
+    currentWeeklyKm,
+    racePeakKm
+      * volumePeakMultiplier
+      * DIFFICULTY_PEAK_MULTIPLIER[difficultyPreference]
+      * injuryMultiplier,
+  );
+
+  let loadWeekCounter = 0;
+  let lastLoadVolume = currentWeeklyKm;
+  let growablePeak = currentWeeklyKm;
+
+  for (let i = 1; i < weeksTotal; i++) {
+    if (phases[i] === "taper") break;
+    loadWeekCounter++;
+    if ((loadWeekCounter + 1) % DELOAD_EVERY_N_WEEKS === 0) continue;
+    lastLoadVolume = round1(lastLoadVolume * (1 + progressionRate));
+    growablePeak = Math.max(growablePeak, lastLoadVolume);
+  }
+
+  // If the runner is already above the race/level floor, allow normal growth.
+  // If not, do not force the floor; use it only as a soft ceiling anchor.
+  const readinessAwareCap = currentWeeklyKm >= levelFloorKm
+    ? ambitionCap
+    : Math.min(ambitionCap, Math.max(growablePeak, levelFloorKm));
+
+  return round1(Math.min(readinessAwareCap, growablePeak));
+}
+
+function constrainVolumesForSessionCap(
+  volumes: number[],
+  sessionMinutesCap: number | null | undefined,
+  daysPerWeek: number,
+  paces: Paces,
+): { volumes: number[]; capped: boolean } {
+  if (!sessionMinutesCap) return { volumes, capped: false };
+  const maxSessionKm = Math.max(1, (sessionMinutesCap * 60) / paces.E_high);
+  const maxWeeklyKm = round1(maxSessionKm * daysPerWeek);
+  let capped = false;
+  const next = volumes.map((volume) => {
+    if (volume <= maxWeeklyKm) return volume;
+    capped = true;
+    return maxWeeklyKm;
+  });
+  return { volumes: next, capped };
 }
 
 // ---------------------------------------------------------------------------
@@ -214,23 +330,6 @@ function restSession(di: number, d: Date): PlannedSession {
     main_set: null,
     cooldown: null,
   };
-}
-
-function scaleWeekVolume(week: TrainingWeek, nextTotalKm: number): void {
-  if (week.total_km <= 0 || nextTotalKm >= week.total_km) return;
-  const scaleFactor = nextTotalKm / week.total_km;
-
-  week.total_km = round1(nextTotalKm);
-  week.long_run_km = round1(week.long_run_km * scaleFactor);
-
-  for (const session of week.sessions) {
-    if (session.target_km) {
-      session.target_km = round1(session.target_km * scaleFactor);
-    }
-    if (session.target_duration_min) {
-      session.target_duration_min = Math.max(1, Math.round(session.target_duration_min * scaleFactor));
-    }
-  }
 }
 
 function buildRecipeSession(
@@ -372,6 +471,85 @@ function computeAcwr(weekIndex: number, volumes: number[]): number | null {
   return Math.round((acute / chronic) * 100) / 100;
 }
 
+function buildWeeksFromVolumes(args: {
+  volumes: number[];
+  phases: Phase[];
+  deloadFlags: boolean[];
+  planStart: Date;
+  goalRace: GoalRace;
+  level: Level;
+  daysPerWeek: number;
+  longRunDay: string;
+  paces: Paces;
+  trainingFocus: PlanInputs["training_focus"];
+  difficultyPreference: PlanInputs["difficulty_preference"];
+  sessionMinutesCap?: number | null;
+}): TrainingWeek[] {
+  const {
+    volumes,
+    phases,
+    deloadFlags,
+    planStart,
+    goalRace,
+    level,
+    daysPerWeek,
+    longRunDay,
+    paces,
+    trainingFocus,
+    difficultyPreference,
+    sessionMinutesCap,
+  } = args;
+
+  const weeks: TrainingWeek[] = [];
+  const maxSessionKm = sessionMinutesCap
+    ? Math.max(1, (sessionMinutesCap * 60) / paces.E_high)
+    : null;
+
+  for (let i = 0; i < volumes.length; i++) {
+    const phase = phases[i];
+    const isDeload = deloadFlags[i];
+    const vol = volumes[i];
+    const longRunKm = round1(Math.min(
+      vol * 0.30,
+      LONG_RUN_CAP_KM[goalRace],
+      maxSessionKm ?? Number.POSITIVE_INFINITY,
+    ));
+    const acwr = computeAcwr(i, volumes);
+    const weekStart = addDays(planStart, i * 7);
+    const recentQualityRecipeIds = weeks
+      .slice(-3)
+      .flatMap(w => w.sessions)
+      .filter(s => s.session_role === "quality")
+      .map(s => s.recipe_id)
+      .filter((id): id is string => Boolean(id));
+
+    const sessions = layoutWeek(
+      i + 1, weekStart, vol, longRunKm, phase, level, goalRace, isDeload,
+      daysPerWeek, longRunDay, paces,
+      trainingFocus ?? "balanced",
+      difficultyPreference ?? "balanced",
+      recentQualityRecipeIds,
+    );
+
+    const qualityCount = sessions.filter(
+      s => s.session_role === "quality"
+    ).length;
+
+    weeks.push({
+      week_index: i + 1,
+      phase,
+      is_deload: isDeload,
+      total_km: vol,
+      long_run_km: longRunKm,
+      quality_count: qualityCount,
+      acwr,
+      sessions,
+    });
+  }
+
+  return weeks;
+}
+
 // ---------------------------------------------------------------------------
 // Guardrails
 // ---------------------------------------------------------------------------
@@ -395,7 +573,7 @@ function validatePlan(weeks: TrainingWeek[], volumes: number[]): string[] {
     }
 
     if (acwr !== null && acwr > 1.3) {
-      warnings.push(`Week ${week_index}: ACWR ${acwr} exceeds 1.3. Source: Gabbett 2016.`);
+      warnings.push(`Week ${week_index}: training load rises faster than the recent four-week baseline. Keep this week controlled or reduce volume.`);
     }
 
     if (phase !== "taper") {
@@ -412,7 +590,7 @@ function validatePlan(weeks: TrainingWeek[], volumes: number[]): string[] {
     const reduction = 1 - finalVol / peakVol;
     if (reduction < 0.38) {
       warnings.push(
-        `Taper final week ${finalVol.toFixed(0)} km is only ${Math.round(reduction * 100)}% below peak. Target 40–60%. Source: Bosquet 2007.`
+        `Taper final week ${finalVol.toFixed(0)} km is only ${Math.round(reduction * 100)}% below peak. Target a clearer 40–60% reduction.`
       );
     }
   }
@@ -491,81 +669,134 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
 
   // 5. Phases + volume
   const phases = splitPhases(weeksTotal, taperWks);
-  const startKm = Math.max(current_weekly_km, FLOOR_KM[goal_race][level]);
-  const peakKm = PEAK_KM[goal_race][level];
-  let volumes = buildVolumeCurve(startKm, peakKm, weeksTotal, level, phases);
+  const volumePreference = inputs.volume_preference ?? "steady";
+  const difficultyPreference = inputs.difficulty_preference ?? "balanced";
+  const trainingFocus = inputs.training_focus ?? "balanced";
+  const injuryFlags = inputs.injury_flags ?? [];
+  const levelFloorKm = FLOOR_KM[goal_race][level];
+  const racePeakKm = PEAK_KM[goal_race][level];
+  const progressiveSupported = current_weekly_km >= levelFloorKm * 0.9;
+  const progressionRate = progressionRateForInputs(
+    level,
+    volumePreference,
+    difficultyPreference,
+    injuryFlags,
+    progressiveSupported,
+  );
+  const peakKm = sustainablePeakKm({
+    currentWeeklyKm: current_weekly_km,
+    racePeakKm,
+    levelFloorKm,
+    weeksTotal,
+    phases,
+    progressionRate,
+    volumePreference,
+    difficultyPreference,
+    injuryFlags,
+    progressiveSupported,
+  });
+  let volumes = buildVolumeCurve(current_weekly_km, peakKm, weeksTotal, progressionRate, phases);
+  const capped = constrainVolumesForSessionCap(
+    volumes,
+    inputs.session_minutes_cap,
+    days_per_week,
+    paces,
+  );
+  volumes = capped.volumes;
+  const deloadFlags = deloadFlagsForPhases(phases);
 
   // 6. Plan start date
   const planStart = nextMonday(today);
 
   // 7. Build weeks
-  const weeks: TrainingWeek[] = [];
-  let loadWeekCounter = 0;
-
-  for (let i = 0; i < weeksTotal; i++) {
-    const phase = phases[i];
-    const isDeload = phase !== "taper" && ++loadWeekCounter % DELOAD_EVERY_N_WEEKS === 0;
-
-    const vol = volumes[i];
-    const longRunKm = round1(Math.min(vol * 0.30, LONG_RUN_CAP_KM[goal_race]));
-    const acwr = computeAcwr(i, volumes);
-    const weekStart = addDays(planStart, i * 7);
-    const recentQualityRecipeIds = weeks
-      .slice(-3)
-      .flatMap(w => w.sessions)
-      .filter(s => s.session_role === "quality")
-      .map(s => s.recipe_id)
-      .filter((id): id is string => Boolean(id));
-
-    const sessions = layoutWeek(
-      i + 1, weekStart, vol, longRunKm, phase, level, goal_race, isDeload,
-      days_per_week, longRunDay, paces,
-      inputs.training_focus ?? "balanced",
-      inputs.difficulty_preference ?? "balanced",
-      recentQualityRecipeIds,
-    );
-
-    const qualityCount = sessions.filter(
-      s => s.session_role === "quality"
-    ).length;
-
-    weeks.push({
-      week_index: i + 1,
-      phase,
-      is_deload: isDeload,
-      total_km: vol,
-      long_run_km: longRunKm,
-      quality_count: qualityCount,
-      acwr,
-      sessions,
-    });
-  }
+  let weeks = buildWeeksFromVolumes({
+    volumes,
+    phases,
+    deloadFlags,
+    planStart,
+    goalRace: goal_race,
+    level,
+    daysPerWeek: days_per_week,
+    longRunDay,
+    paces,
+    trainingFocus,
+    difficultyPreference,
+    sessionMinutesCap: inputs.session_minutes_cap,
+  });
 
   // 7b. Never raise volume AND quality in the same week. Source: Daniels.
-  for (let i = 1; i < weeks.length; i++) {
-    const prev = weeks[i - 1];
-    const curr = weeks[i];
-    if (curr.is_deload || curr.phase === "taper") continue;
-    if (curr.total_km > prev.total_km && curr.quality_count > prev.quality_count) {
-      curr.total_km = prev.total_km;
-      volumes[i] = prev.total_km;
-      curr.long_run_km = round1(Math.min(curr.total_km * 0.30, LONG_RUN_CAP_KM[goal_race]));
+  for (let pass = 0; pass < 4; pass++) {
+    let adjustedForQualityLoad = false;
+    for (let i = 1; i < weeks.length; i++) {
+      const prev = weeks[i - 1];
+      const curr = weeks[i];
+      if (curr.is_deload || curr.phase === "taper") continue;
+      if (curr.total_km > prev.total_km && curr.quality_count > prev.quality_count) {
+        volumes[i] = prev.total_km;
+        adjustedForQualityLoad = true;
+      }
     }
+
+    if (!adjustedForQualityLoad) break;
+    weeks = buildWeeksFromVolumes({
+      volumes,
+      phases,
+      deloadFlags,
+      planStart,
+      goalRace: goal_race,
+      level,
+      daysPerWeek: days_per_week,
+      longRunDay,
+      paces,
+      trainingFocus,
+      difficultyPreference,
+      sessionMinutesCap: inputs.session_minutes_cap,
+    });
   }
 
   // 7c. Taper weeks should never rebound above the immediately preceding
   // week after guardrail adjustments have been applied.
+  let adjustedForTaper = false;
   for (let i = 1; i < weeks.length; i++) {
     const prev = weeks[i - 1];
     const curr = weeks[i];
     if (curr.phase === "taper" && curr.total_km > prev.total_km) {
-      scaleWeekVolume(curr, prev.total_km);
-      volumes[i] = curr.total_km;
+      volumes[i] = prev.total_km;
+      adjustedForTaper = true;
     }
   }
 
+  if (adjustedForTaper) {
+    weeks = buildWeeksFromVolumes({
+      volumes,
+      phases,
+      deloadFlags,
+      planStart,
+      goalRace: goal_race,
+      level,
+      daysPerWeek: days_per_week,
+      longRunDay,
+      paces,
+      trainingFocus,
+      difficultyPreference,
+      sessionMinutesCap: inputs.session_minutes_cap,
+    });
+  }
+
   // 8. Validate
-  const warnings = validatePlan(weeks, volumes);
+  const warnings = [
+    ...(current_weekly_km < levelFloorKm
+      ? [`Your recent ${current_weekly_km.toFixed(0)} km/week is below the usual ${level} ${goal_race} starting range. This plan starts from your real baseline and builds conservatively.`]
+      : []),
+    ...(volumePreference === "progressive" && !progressiveSupported
+      ? ["Progressive volume was requested, but current training is below the usual starting range, so the build rate was kept steady."]
+      : []),
+    ...(capped.capped
+      ? [`Some weekly volume was capped because the session limit is ${inputs.session_minutes_cap} minutes.`]
+      : []),
+    ...validatePlan(weeks, volumes),
+  ];
+  const actualPeakWeeklyKm = Math.max(...volumes.filter((_, i) => phases[i] !== "taper"));
 
   return {
     meta: {
@@ -577,13 +808,13 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
       start_date: isoDate(planStart),
       vdot,
       vdot_source: vdotSource,
-      peak_weekly_km: peakKm,
+      peak_weekly_km: round1(actualPeakWeeklyKm),
       hrmax,
       generated_at: new Date().toISOString(),
       intensity_mode: inputs.intensity_mode ?? "pace",
-      training_focus: inputs.training_focus ?? "balanced",
-      volume_preference: inputs.volume_preference ?? "steady",
-      difficulty_preference: inputs.difficulty_preference ?? "balanced",
+      training_focus: trainingFocus,
+      volume_preference: volumePreference,
+      difficulty_preference: difficultyPreference,
     },
     paces,
     hr_zones: zones,

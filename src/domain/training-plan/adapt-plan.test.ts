@@ -384,7 +384,9 @@ test("PREFERENCE_REPLAN rewrites only future quality sessions", () => {
     longest_recent_km: 16,
     days_per_week: 5,
   });
-  const currentWeekIndex = 1;
+  // Start after the early base cooldown window so the preferred recipe can
+  // safely replace a future quality session instead of being filtered out.
+  const currentWeekIndex = 5;
   const futureWeekIndex = plan.weeks.findIndex((week, index) =>
     index > currentWeekIndex && week.sessions.some((session) => session.session_role === "quality" && session.recipe_id),
   );
