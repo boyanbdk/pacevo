@@ -22,8 +22,13 @@ type FormState = {
   // Step 3: Recent performance
   performanceMode: "race" | "estimate" | "none";
   raceDistance: string;
-  raceTime: string; // "HH:MM:SS" or "MM:SS"
-  estimatedGoalTime: string; // estimated time for goal race distance
+  raceTimeH: string;
+  raceTimeM: string;
+  raceTimeS: string;
+  estimateDistance: string; // estimate distance — independent from goal race
+  estimateTimeH: string;
+  estimateTimeM: string;
+  estimateTimeS: string;
   // Step 4: Preferences
   selfSelectedLevel: Level | "";
   trainingFocus: TrainingFocus;
@@ -49,8 +54,13 @@ const INITIAL: FormState = {
   longestRecentKm: "",
   performanceMode: "none",
   raceDistance: "",
-  raceTime: "",
-  estimatedGoalTime: "",
+  raceTimeH: "",
+  raceTimeM: "",
+  raceTimeS: "",
+  estimateDistance: "",
+  estimateTimeH: "",
+  estimateTimeM: "",
+  estimateTimeS: "",
   selfSelectedLevel: "",
   trainingFocus: "balanced",
   volumePref: "steady",
@@ -89,12 +99,14 @@ const MIN_WEEKS: Record<GoalRace, number> = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function parseRaceTimeSeconds(raw: string): number | null {
-  const parts = raw.trim().split(":").map(Number);
-  if (parts.some(isNaN)) return null;
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  return null;
+function hmsToSeconds(h: string, m: string, s: string): number | null {
+  const hv = parseInt(h || "0", 10);
+  const mv = parseInt(m || "0", 10);
+  const sv = parseInt(s || "0", 10);
+  if (isNaN(hv) || isNaN(mv) || isNaN(sv)) return null;
+  if (mv >= 60 || sv >= 60) return null;
+  const total = hv * 3600 + mv * 60 + sv;
+  return total > 0 ? total : null;
 }
 
 function weeksUntil(dateStr: string): number {
@@ -190,12 +202,76 @@ function Step2({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void 
   );
 }
 
-const GOAL_RACE_LABEL: Record<GoalRace, string> = {
-  "5K": "5K", "10K": "10K", half: "half marathon", marathon: "marathon",
-};
+function TimeInputs({
+  label,
+  h, m, s,
+  onH, onM, onS,
+  hint,
+}: {
+  label: string;
+  h: string; m: string; s: string;
+  onH: (v: string) => void;
+  onM: (v: string) => void;
+  onS: (v: string) => void;
+  hint?: string;
+}) {
+  return (
+    <div className="field">
+      <label className="field-label">{label}</label>
+      <div className="hms-row">
+        <div className="hms-field">
+          <input
+            type="number"
+            className="input"
+            placeholder="0"
+            min="0"
+            max="23"
+            value={h}
+            onChange={(e) => onH(e.target.value)}
+            aria-label="hours"
+          />
+          <span className="hms-label">h</span>
+        </div>
+        <div className="hms-field">
+          <input
+            type="number"
+            className="input"
+            placeholder="00"
+            min="0"
+            max="59"
+            value={m}
+            onChange={(e) => onM(e.target.value)}
+            aria-label="minutes"
+          />
+          <span className="hms-label">m</span>
+        </div>
+        <div className="hms-field">
+          <input
+            type="number"
+            className="input"
+            placeholder="00"
+            min="0"
+            max="59"
+            value={s}
+            onChange={(e) => onS(e.target.value)}
+            aria-label="seconds"
+          />
+          <span className="hms-label">s</span>
+        </div>
+      </div>
+      {hint && <span className="field-hint">{hint}</span>}
+    </div>
+  );
+}
+
+const ESTIMATE_DISTANCES = [
+  { value: "5000", label: "5K" },
+  { value: "10000", label: "10K" },
+  { value: "21097", label: "Half marathon" },
+  { value: "42195", label: "Marathon" },
+];
 
 function Step3({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void }) {
-  const goalLabel = s.goalRace ? GOAL_RACE_LABEL[s.goalRace as GoalRace] : "goal race";
   return (
     <div className="stack">
       <div>
@@ -245,35 +321,45 @@ function Step3({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void 
               <option value="3000">3K</option>
             </select>
           </div>
-          <div className="field">
-            <label className="field-label">Finish time</label>
-            <input
-              type="text"
-              className="input"
-              placeholder="mm:ss or hh:mm:ss"
-              value={s.raceTime}
-              onChange={(e) => set({ raceTime: e.target.value })}
-            />
-            <span className="field-hint">e.g. 22:30 for a 5K or 1:45:00 for a half</span>
-          </div>
+          <TimeInputs
+            label="Finish time"
+            h={s.raceTimeH} m={s.raceTimeM} s={s.raceTimeS}
+            onH={(v) => set({ raceTimeH: v })}
+            onM={(v) => set({ raceTimeM: v })}
+            onS={(v) => set({ raceTimeS: v })}
+            hint="Your actual finish time from the race or time-trial."
+          />
         </>
       )}
       {s.performanceMode === "estimate" && (
-        <div className="field">
-          <label className="field-label">
-            Estimated {goalLabel} time — if you raced today
-          </label>
-          <input
-            type="text"
-            className="input"
-            placeholder="mm:ss or hh:mm:ss"
-            value={s.estimatedGoalTime}
-            onChange={(e) => set({ estimatedGoalTime: e.target.value })}
+        <>
+          <div className="field">
+            <label className="field-label">Estimate distance</label>
+            <div className="segmented" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+              {ESTIMATE_DISTANCES.map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={s.estimateDistance === value ? "selected" : ""}
+                  onClick={() => set({ estimateDistance: value })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span className="field-hint">
+              Pick any distance — we&apos;ll convert to your goal pace using Riegel.
+            </span>
+          </div>
+          <TimeInputs
+            label="Estimated finish time — if you raced today"
+            h={s.estimateTimeH} m={s.estimateTimeM} s={s.estimateTimeS}
+            onH={(v) => set({ estimateTimeH: v })}
+            onM={(v) => set({ estimateTimeM: v })}
+            onS={(v) => set({ estimateTimeS: v })}
+            hint="A rough estimate is fine. Used to set your training paces."
           />
-          <span className="field-hint">
-            Used to set your training paces. A rough estimate is fine.
-          </span>
-        </div>
+        </>
       )}
     </div>
   );
@@ -526,9 +612,9 @@ function canProceed(step: number, s: FormState): boolean {
   if (step === 2) {
     if (s.performanceMode === "none") return true;
     if (s.performanceMode === "estimate") {
-      return !!s.estimatedGoalTime && parseRaceTimeSeconds(s.estimatedGoalTime) !== null;
+      return !!s.estimateDistance && hmsToSeconds(s.estimateTimeH, s.estimateTimeM, s.estimateTimeS) !== null;
     }
-    return !!s.raceDistance && !!s.raceTime && parseRaceTimeSeconds(s.raceTime) !== null;
+    return !!s.raceDistance && hmsToSeconds(s.raceTimeH, s.raceTimeM, s.raceTimeS) !== null;
   }
   if (step === 3) return true; // preferences all have defaults
   if (step === 4) return !!s.daysPerWeek;
@@ -552,17 +638,20 @@ export default function NewPlanPage() {
   }
 
   function buildInputs(): PlanInputs {
+    const raceTimeS = hmsToSeconds(form.raceTimeH, form.raceTimeM, form.raceTimeS);
     const recentRace =
-      form.performanceMode === "race" && form.raceDistance && form.raceTime
-        ? {
-            distance_m: Number(form.raceDistance),
-            time_s: parseRaceTimeSeconds(form.raceTime)!,
-          }
+      form.performanceMode === "race" && form.raceDistance && raceTimeS !== null
+        ? { distance_m: Number(form.raceDistance), time_s: raceTimeS }
         : null;
 
+    const estimateTimeS = hmsToSeconds(form.estimateTimeH, form.estimateTimeM, form.estimateTimeS);
     const estimatedRaceTimeS =
-      form.performanceMode === "estimate" && form.estimatedGoalTime
-        ? parseRaceTimeSeconds(form.estimatedGoalTime)
+      form.performanceMode === "estimate" && form.estimateDistance && estimateTimeS !== null
+        ? estimateTimeS
+        : null;
+    const estimatedRaceDistanceM =
+      form.performanceMode === "estimate" && form.estimateDistance
+        ? Number(form.estimateDistance)
         : null;
 
     return {
@@ -572,6 +661,7 @@ export default function NewPlanPage() {
       longest_recent_km: Number(form.longestRecentKm),
       recent_race: recentRace,
       estimated_race_time_s: estimatedRaceTimeS,
+      estimated_race_distance_m: estimatedRaceDistanceM,
       age: Number(form.age),
       resting_hr: form.restingHR ? Number(form.restingHR) : null,
       max_hr: form.maxHR ? Number(form.maxHR) : null,

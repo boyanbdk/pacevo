@@ -617,17 +617,12 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
     vdotSource = "race";
   }
 
-  // Estimated race time for the goal distance is a secondary VDOT source.
-  // Only used when no actual recent race is available.
-  if (vdot === null && inputs.estimated_race_time_s) {
-    const GOAL_DISTANCE_M: Record<string, number> = {
-      "5K": 5000, "10K": 10000, half: 21097, marathon: 42195,
-    };
-    const distanceM = GOAL_DISTANCE_M[goal_race];
-    if (distanceM) {
-      vdot = vdotFromRace(distanceM, inputs.estimated_race_time_s);
-      vdotSource = "race";
-    }
+  // Estimated performance for a known distance is a secondary VDOT source.
+  // Uses the provided estimate distance (which may differ from the goal race).
+  // vdotFromRace handles Riegel conversion for any supported or nearby distance.
+  if (vdot === null && inputs.estimated_race_time_s && inputs.estimated_race_distance_m) {
+    vdot = vdotFromRace(inputs.estimated_race_distance_m, inputs.estimated_race_time_s);
+    vdotSource = "race";
   }
 
   if (vdot === null && longest_recent_km >= 5) {

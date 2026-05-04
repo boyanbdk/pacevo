@@ -546,3 +546,88 @@ test("generated plan warnings do not expose source citations", () => {
   expect(plan.warnings.length).toBeGreaterThan(0);
   expect(plan.warnings.join("\n")).not.toMatch(/Source:/);
 });
+
+// ---------------------------------------------------------------------------
+// Phase 5: Race estimate input — independent estimate distance
+// ---------------------------------------------------------------------------
+
+function estimateBase(goalRace: GoalRace, weeks: number): PlanInputs {
+  return {
+    goal_race: goalRace,
+    goal_date: futureDate(weeks),
+    current_weekly_km: 40,
+    longest_recent_km: 16,
+    age: 34,
+    days_per_week: 4,
+    recent_race: null,
+    estimated_race_time_s: null,
+    estimated_race_distance_m: null,
+    surface: "road",
+    injury_flags: [],
+  };
+}
+
+test("marathon plan built from a 5K estimate derives a valid VDOT", () => {
+  // 23-minute 5K estimate → Riegel converts to marathon pace → VDOT
+  const plan = buildPlan({
+    ...estimateBase("marathon", 20),
+    estimated_race_time_s: 23 * 60, // 23:00 for 5K
+    estimated_race_distance_m: 5000,
+  });
+  expect(plan.meta.vdot).not.toBeNull();
+  expect(plan.meta.vdot_source).toBe("race");
+  expect(plan.meta.vdot!).toBeGreaterThanOrEqual(40);
+  expect(plan.meta.vdot!).toBeLessThanOrEqual(50);
+});
+
+test("5K plan built from a half marathon estimate derives a valid VDOT", () => {
+  // 1:45:00 half estimate → Riegel converts to 5K pace → VDOT
+  const plan = buildPlan({
+    ...estimateBase("5K", 12),
+    estimated_race_time_s: 1 * 3600 + 45 * 60, // 1:45:00 for half
+    estimated_race_distance_m: 21097,
+  });
+  expect(plan.meta.vdot).not.toBeNull();
+  expect(plan.meta.vdot_source).toBe("race");
+  expect(plan.meta.vdot!).toBeGreaterThanOrEqual(40);
+  expect(plan.meta.vdot!).toBeLessThanOrEqual(50);
+});
+
+test("10K plan built from a 10K estimate derives a valid VDOT", () => {
+  const plan = buildPlan({
+    ...estimateBase("10K", 12),
+    estimated_race_time_s: 47 * 60, // 47:00 for 10K
+    estimated_race_distance_m: 10000,
+  });
+  expect(plan.meta.vdot).not.toBeNull();
+  expect(plan.meta.vdot_source).toBe("race");
+  expect(plan.meta.vdot!).toBeGreaterThanOrEqual(42);
+  expect(plan.meta.vdot!).toBeLessThanOrEqual(46);
+});
+
+test("half plan built from a marathon estimate derives a valid VDOT", () => {
+  // 3:45:00 marathon estimate → Riegel converts to half pace → VDOT
+  const plan = buildPlan({
+    ...estimateBase("half", 14),
+    estimated_race_time_s: 3 * 3600 + 45 * 60, // 3:45:00 for marathon
+    estimated_race_distance_m: 42195,
+  });
+  expect(plan.meta.vdot).not.toBeNull();
+  expect(plan.meta.vdot_source).toBe("race");
+  expect(plan.meta.vdot!).toBeGreaterThanOrEqual(35);
+  expect(plan.meta.vdot!).toBeLessThanOrEqual(45);
+});
+
+test("estimate-derived VDOT is consistent with equivalent direct race VDOT", () => {
+  // A 5K estimate should yield roughly the same VDOT as an actual 5K race
+  const fromEstimate = buildPlan({
+    ...estimateBase("marathon", 20),
+    estimated_race_time_s: 20 * 60,
+    estimated_race_distance_m: 5000,
+  });
+  const fromRace = buildPlan({
+    ...estimateBase("marathon", 20),
+    recent_race: { distance_m: 5000, time_s: 20 * 60 },
+  });
+  expect(fromEstimate.meta.vdot).toBe(fromRace.meta.vdot);
+});

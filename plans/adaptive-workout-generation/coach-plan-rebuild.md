@@ -250,6 +250,8 @@ Verification added:
 
 ### Phase 5: Race Estimate Input Rebuild
 
+Status: implemented on May 4, 2026.
+
 Goal: make performance input precise and convenient.
 
 Tasks:
@@ -279,6 +281,8 @@ Likely files:
 - `src/app/app/plans/new/page.tsx`
 
 ### Phase 6: Split New Workout From Tailoring
+
+Status: implemented on May 4, 2026.
 
 Goal: separate choosing a one-off workout from adapting an already planned workout.
 

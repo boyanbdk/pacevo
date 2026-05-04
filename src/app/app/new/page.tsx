@@ -1,270 +1,364 @@
 "use client";
 
-import { Save, Sparkles, Upload } from "lucide-react";
-import { useRef, useState } from "react";
+import { Save } from "lucide-react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { AdjustedWorkoutCard } from "@/components/AdjustedWorkoutCard";
-import { ExportMenu } from "@/components/ExportMenu";
-import { parseWorkoutText } from "@/domain/parser";
-import { tailorWorkout } from "@/domain/run-tailor";
-import type { AdjustedWorkout, DisplayStyle, ParsedWorkout, TailoringInputs, WorkoutAdjustment } from "@/domain/workout-schema";
-import { DEMO_WORKOUTS } from "@/lib/demo-workouts";
-import { getSettings, saveSettings, saveWorkout } from "@/lib/storage";
+import { WORKOUT_RECIPES } from "@/domain/training-plan/workout-recipes";
+import { pacesFromVdot } from "@/domain/training-plan/vdot";
+import type { Level, PlannedSession, RecipeSessionType, WorkoutContext } from "@/domain/training-plan/types";
+import type { AdjustedStep, AdjustedWorkout, SavedWorkout, TailoringInputs, WorkoutAdjustment } from "@/domain/workout-schema";
+import { saveWorkout } from "@/lib/storage";
 
-export default function NewWorkoutPage() {
-  const router = useRouter();
-  const cardRef = useRef<HTMLDivElement>(null);
-  const settings = getSettings();
-  const [sourceText, setSourceText] = useState(DEMO_WORKOUTS[0].text);
-  const [imagePreview, setImagePreview] = useState<string | undefined>();
-  const [imageName, setImageName] = useState<string | undefined>();
-  const [parsed, setParsed] = useState<ParsedWorkout | null>(null);
-  const [displayStyle, setDisplayStyle] = useState<DisplayStyle>(settings.preferredDisplayStyle);
-  const [feedback, setFeedback] = useState("");
-  const [adjusted, setAdjusted] = useState<AdjustedWorkout | null>(null);
-  const [inputs, setInputs] = useState<TailoringInputs>({
-    runContext: "treadmill",
-    outputFormat: settings.preferredOutputMode,
-    easyPace: settings.defaultEasyPace,
-    cooldownPace: settings.defaultCooldownPace,
-    restWalkSpeed: settings.defaultRestWalkSpeed,
-    feeling: 7,
-    push: "normal"
-  });
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
-  function parse() {
-    setParsed(parseWorkoutText(sourceText));
-    setAdjusted(null);
+const TYPE_OPTIONS: { value: RecipeSessionType; label: string; sub: string }[] = [
+  { value: "recovery", label: "Recovery", sub: "Light effort, short" },
+  { value: "easy", label: "Easy run", sub: "Aerobic base building" },
+  { value: "long", label: "Long run", sub: "Endurance and durability" },
+  { value: "tempo", label: "Tempo", sub: "Lactate threshold work" },
+  { value: "interval", label: "Intervals", sub: "Speed and VO2max" },
+];
+
+const DURATION_OPTIONS = [20, 30, 45, 60, 75, 90];
+
+const LEVEL_OPTIONS: { value: Level; label: string }[] = [
+  { value: "beginner", label: "Beginner" },
+  { value: "intermediate", label: "Intermediate" },
+  { value: "advanced", label: "Advanced" },
+];
+
+// Rough min/km pace (warmup + main + cooldown averaged) per session type.
+// Used to convert duration to a targetKm for recipe context.
+const DURATION_PACE_MIN_PER_KM: Record<RecipeSessionType, number> = {
+  recovery: 7.0,
+  easy: 6.2,
+  long: 6.5,
+  tempo: 5.2,
+  interval: 5.8,
+};
+
+// Representative weekly km by level — used for recipe minWeeklyKm filtering.
+const WEEKLY_KM_BY_LEVEL: Record<Level, number> = {
+  beginner: 25,
+  intermediate: 48,
+  advanced: 72,
+};
+
+// Default VDOT for pace derivation when no user performance data is available.
+// VDOT 45 ≈ 23-minute 5K — a moderate recreational runner.
+const DEFAULT_VDOT = 45;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function durationToKm(type: RecipeSessionType, minutes: number): number {
+  return Math.round((minutes / DURATION_PACE_MIN_PER_KM[type]) * 10) / 10;
+}
+
+function buildCandidates(
+  sessionType: RecipeSessionType,
+  durationMin: number,
+  level: Level
+): PlannedSession[] {
+  const weeklyKm = WEEKLY_KM_BY_LEVEL[level];
+  const targetKm = durationToKm(sessionType, durationMin);
+  const paces = pacesFromVdot(DEFAULT_VDOT);
+  const today = new Date();
+
+  const ctx: WorkoutContext = {
+    dayIndex: 2,
+    date: today,
+    targetKm,
+    paces,
+    level,
+    phase: "build",
+    goalRace: "10K",
+    weeklyKm,
+    weekIndex: 4,
+  };
+
+  return WORKOUT_RECIPES
+    .filter(r =>
+      r.sessionType === sessionType &&
+      r.levels.includes(level) &&
+      r.minWeeklyKm <= weeklyKm
+    )
+    .map(r => r.build(ctx));
+}
+
+function sessionToAdjustedWorkout(session: PlannedSession): AdjustedWorkout {
+  const steps: AdjustedStep[] = [];
+
+  if (session.warmup) {
+    steps.push({
+      id: "warmup",
+      kind: "Warm-up",
+      label: "Easy effort",
+      target: session.warmup,
+      detail: "",
+    });
   }
-
-  function uploadImage(file: File | undefined) {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setImagePreview(String(reader.result));
-      setImageName(file.name);
-    };
-    reader.readAsDataURL(file);
+  if (session.main_set) {
+    steps.push({
+      id: "main",
+      kind: "Main set",
+      label: session.type,
+      target: session.main_set,
+      detail: session.description,
+    });
   }
-
-  function generate(nextFeedback?: string) {
-    const currentParsed = parsed ?? parseWorkoutText(sourceText);
-    setParsed(currentParsed);
-    const next = tailorWorkout(currentParsed, inputs, nextFeedback);
-    setAdjusted(next);
-    saveSettings({
-      ...settings,
-      defaultEasyPace: inputs.easyPace,
-      defaultCooldownPace: inputs.cooldownPace,
-      defaultRestWalkSpeed: inputs.restWalkSpeed ?? settings.defaultRestWalkSpeed,
-      preferredOutputMode: inputs.outputFormat,
-      preferredDisplayStyle: displayStyle
+  if (session.cooldown) {
+    steps.push({
+      id: "cooldown",
+      kind: "Cool-down",
+      label: "Easy effort",
+      target: session.cooldown,
+      detail: "",
+    });
+  }
+  if (steps.length === 0) {
+    steps.push({
+      id: "main",
+      kind: "Run",
+      label: session.type,
+      target: session.description,
+      detail: session.rationale,
     });
   }
 
-  function save() {
-    if (!parsed || !adjusted) return;
-    const now = new Date().toISOString();
-    const adjustment: WorkoutAdjustment = {
-      id: crypto.randomUUID(),
-      inputs: adjusted.inputs,
-      adjustedWorkout: adjusted,
-      displayStyle,
-      feedbackPrompt: feedback || undefined,
-      revisionNumber: 1,
-      createdAt: now
-    };
-    const workout = {
-      id: crypto.randomUUID(),
-      title: parsed.title,
-      sourceType: imagePreview ? "image" as const : "text" as const,
-      sourceText,
-      sourceImageDataUrl: imagePreview,
-      parsedWorkout: parsed,
-      adjustments: [adjustment],
-      createdAt: now,
-      updatedAt: now
-    };
-    saveWorkout(workout);
-    router.push(`/app/workouts/${workout.id}`);
+  const stubInputs: TailoringInputs = {
+    runContext: "free-run",
+    outputFormat: "general",
+    easyPace: "6:00",
+    cooldownPace: "6:30",
+    feeling: 7,
+    push: "normal",
+  };
+
+  const notes: string[] = [];
+  if (session.target_km) notes.push(`${session.target_km.toFixed(1)} km`);
+  if (session.target_duration_min) notes.push(`~${session.target_duration_min} min`);
+
+  return {
+    title: session.description,
+    lane: session.type,
+    inputs: stubInputs,
+    summary: session.rationale,
+    steps,
+    notes,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+function saveRecipeSession(session: PlannedSession): string {
+  const now = new Date().toISOString();
+  const adjusted = sessionToAdjustedWorkout(session);
+  const adjustment: WorkoutAdjustment = {
+    id: crypto.randomUUID(),
+    inputs: adjusted.inputs,
+    adjustedWorkout: adjusted,
+    displayStyle: "steps",
+    revisionNumber: 1,
+    createdAt: now,
+  };
+  const workout: SavedWorkout = {
+    id: crypto.randomUUID(),
+    title: session.description,
+    sourceType: "text",
+    sourceText: [session.warmup, session.main_set, session.cooldown].filter(Boolean).join("\n"),
+    parsedWorkout: {
+      title: session.description,
+      activityType: "running",
+      sourceSummary: session.rationale,
+      steps: [],
+      uncertaintyFlags: [],
+    },
+    adjustments: [adjustment],
+    createdAt: now,
+    updatedAt: now,
+  };
+  saveWorkout(workout);
+  return workout.id;
+}
+
+// ---------------------------------------------------------------------------
+// Candidate card
+// ---------------------------------------------------------------------------
+
+function CandidateCard({
+  session,
+  onSave,
+}: {
+  session: PlannedSession;
+  onSave: () => void;
+}) {
+  return (
+    <div className="panel stack" style={{ gap: 12 }}>
+      <div>
+        <div className="card-kicker">{session.type}</div>
+        <h3 style={{ margin: "4px 0 6px" }}>{session.description}</h3>
+        <p className="muted" style={{ fontSize: 14 }}>{session.rationale}</p>
+      </div>
+      {(session.warmup || session.main_set || session.cooldown) && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {session.warmup && (
+            <div className="recipe-step-row">
+              <span className="recipe-step-label">Warm-up</span>
+              <span>{session.warmup}</span>
+            </div>
+          )}
+          {session.main_set && (
+            <div className="recipe-step-row">
+              <span className="recipe-step-label">Main set</span>
+              <span>{session.main_set}</span>
+            </div>
+          )}
+          {session.cooldown && (
+            <div className="recipe-step-row">
+              <span className="recipe-step-label">Cool-down</span>
+              <span>{session.cooldown}</span>
+            </div>
+          )}
+        </div>
+      )}
+      <div className="tag-row" style={{ marginTop: 4 }}>
+        {session.target_km && <span className="tag">{session.target_km.toFixed(1)} km</span>}
+        {session.target_duration_min && <span className="tag">~{session.target_duration_min} min</span>}
+        {session.hr_zone && <span className="tag">{session.hr_zone}</span>}
+      </div>
+      <button className="button primary" type="button" onClick={onSave} style={{ alignSelf: "flex-start" }}>
+        <Save size={16} />
+        Save workout
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
+
+type FormState = {
+  sessionType: RecipeSessionType | null;
+  durationMin: number;
+  level: Level;
+};
+
+export default function NewWorkoutPage() {
+  const router = useRouter();
+  const [form, setForm] = useState<FormState>({
+    sessionType: null,
+    durationMin: 45,
+    level: "intermediate",
+  });
+  const [candidates, setCandidates] = useState<PlannedSession[] | null>(null);
+
+  function find() {
+    if (!form.sessionType) return;
+    setCandidates(buildCandidates(form.sessionType, form.durationMin, form.level));
   }
+
+  function handleSave(session: PlannedSession) {
+    const id = saveRecipeSession(session);
+    router.push(`/app/workouts/${id}`);
+  }
+
+  const ready = !!form.sessionType;
 
   return (
     <>
       <div className="page-header">
         <div className="page-title">
           <h1>New workout</h1>
-          <p>Paste a workout or upload a screenshot, review extraction, then generate the adjusted plan.</p>
+          <p>Choose a workout type and duration to see matching options for today.</p>
         </div>
       </div>
 
       <div className="grid-2">
         <div className="stack">
           <section className="panel stack">
-            <h2>1. Source</h2>
-            <div className="field">
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                <label htmlFor="source">Workout text</label>
-                <div className="button-row" style={{ gap: 4 }}>
-                  {DEMO_WORKOUTS.map((demo) => (
-                    <button
-                      key={demo.label}
-                      className="button ghost compact"
-                      type="button"
-                      onClick={() => { setSourceText(demo.text); setParsed(null); setAdjusted(null); }}
-                    >
-                      {demo.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <textarea className="textarea" id="source" value={sourceText} onChange={(event) => setSourceText(event.target.value)} />
-            </div>
-            {imagePreview && (
-              <div className="image-preview">
-                <img src={imagePreview} alt={imageName ?? "Uploaded workout screenshot"} />
-                <span className="tag">Screenshot attached: {imageName}</span>
-                <p className="muted">Local OCR is not configured yet, so extraction still uses the pasted workout text.</p>
-              </div>
-            )}
-            <div className="button-row">
-              <label className="button" htmlFor="workout-image">
-                <Upload size={17} />
-                Upload screenshot
-              </label>
-              <input
-                className="hidden"
-                id="workout-image"
-                type="file"
-                accept="image/*"
-                onChange={(event) => uploadImage(event.target.files?.[0])}
-              />
-              <button className="button primary" onClick={parse} type="button">
-                Review extraction
-              </button>
-            </div>
-          </section>
-
-          {parsed && (
-            <section className="panel stack">
-              <h2>2. Review extracted workout</h2>
-              <div className="tag-row">
-                {parsed.uncertaintyFlags.map((flag) => (
-                  <span className="tag warn" key={flag}>
-                    {flag}
-                  </span>
-                ))}
-                {parsed.uncertaintyFlags.length === 0 && <span className="tag">No review flags</span>}
-              </div>
-              <div className="review-list">
-                {parsed.steps.map((step) => (
-                  <div className="review-item" key={step.id}>
-                    <strong>{step.label}</strong>
-                    <div className="muted">
-                      {step.type}
-                      {step.reps ? ` - ${step.reps} reps` : ""}
-                      {step.distanceKm ? ` - ${step.distanceKm} km` : ""}
-                      {step.targetPace ? ` - ${step.targetPace}/km` : ""}
-                      {step.restSeconds ? ` - ${step.restSeconds} sec rest` : ""}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          <section className="panel stack">
-            <h2>3. Tailoring inputs</h2>
-            <div className="grid-2">
-              <div className="field">
-                <label>Run context</label>
-                <select className="select" value={inputs.runContext} onChange={(event) => setInputs({ ...inputs, runContext: event.target.value as TailoringInputs["runContext"] })}>
-                  <option value="treadmill">Treadmill</option>
-                  <option value="free-run">Free run</option>
-                </select>
-              </div>
-              <div className="field">
-                <label>Output format</label>
-                <select className="select" value={inputs.outputFormat} onChange={(event) => setInputs({ ...inputs, outputFormat: event.target.value as TailoringInputs["outputFormat"] })}>
-                  <option value="treadmill-time">Treadmill time-based</option>
-                  <option value="treadmill-distance">Treadmill distance-based</option>
-                  <option value="general">General running plan</option>
-                </select>
-              </div>
-            </div>
-            <div className="grid-3">
-              <div className="field">
-                <label>Easy/warm-up pace</label>
-                <input className="input" value={inputs.easyPace} onChange={(event) => setInputs({ ...inputs, easyPace: event.target.value })} />
-              </div>
-              <div className="field">
-                <label>Recovery pace</label>
-                <input className="input" value={inputs.cooldownPace} onChange={(event) => setInputs({ ...inputs, cooldownPace: event.target.value })} />
-              </div>
-              <div className="field">
-                <label>Walk rest speed</label>
-                <input className="input" type="number" step="0.1" value={inputs.restWalkSpeed ?? ""} onChange={(event) => setInputs({ ...inputs, restWalkSpeed: Number(event.target.value) })} />
-              </div>
-            </div>
-            <div className="grid-2">
-              <div className="field">
-                <label>Feeling: {inputs.feeling}/10</label>
-                <input className="input" type="range" min="1" max="10" value={inputs.feeling} onChange={(event) => setInputs({ ...inputs, feeling: Number(event.target.value) })} />
-              </div>
-              <div className="field">
-                <label>Desired push</label>
-                <div className="segmented">
-                  {(["easy", "normal", "hard"] as const).map((push) => (
-                    <button className={inputs.push === push ? "selected" : ""} key={push} onClick={() => setInputs({ ...inputs, push })} type="button">
-                      {push}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="field">
-              <label>Output view</label>
-              <div className="segmented" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
-                {(["table", "steps"] as const).map((style) => (
-                  <button className={displayStyle === style ? "selected" : ""} key={style} onClick={() => setDisplayStyle(style)} type="button">
-                    {style}
+            <div>
+              <p className="field-label">Workout type</p>
+              <div className="plan-goal-grid">
+                {TYPE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={`plan-goal-btn${form.sessionType === opt.value ? " selected" : ""}`}
+                    onClick={() => { setForm(f => ({ ...f, sessionType: opt.value })); setCandidates(null); }}
+                  >
+                    <strong>{opt.label}</strong>
+                    <span>{opt.sub}</span>
                   </button>
                 ))}
               </div>
             </div>
-            <button className="button primary" type="button" onClick={() => generate()}>
-              <Sparkles size={17} />
-              Generate adjusted workout
+
+            <div className="field">
+              <p className="field-label">Duration</p>
+              <div className="segmented" style={{ gridTemplateColumns: `repeat(${DURATION_OPTIONS.length}, 1fr)` }}>
+                {DURATION_OPTIONS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className={form.durationMin === d ? "selected" : ""}
+                    onClick={() => { setForm(f => ({ ...f, durationMin: d })); setCandidates(null); }}
+                  >
+                    {d} min
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="field">
+              <p className="field-label">Your level</p>
+              <div className="segmented" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+                {LEVEL_OPTIONS.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={form.level === value ? "selected" : ""}
+                    onClick={() => { setForm(f => ({ ...f, level: value })); setCandidates(null); }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              className="button primary"
+              type="button"
+              disabled={!ready}
+              onClick={find}
+            >
+              Find workouts
             </button>
           </section>
         </div>
 
-        <aside className="stack">
-          {adjusted ? (
-            <>
-              <AdjustedWorkoutCard workout={adjusted} displayStyle={displayStyle} cardRef={cardRef} />
-              <section className="panel stack">
-                <h2>Satisfaction check</h2>
-                <p className="muted">If this misses the intent, describe the change and regenerate from the same reviewed workout.</p>
-                <textarea className="textarea" value={feedback} onChange={(event) => setFeedback(event.target.value)} placeholder="Example: make the first half easier and finish only slightly faster" />
-                <div className="button-row">
-                  <button className="button" type="button" onClick={() => generate(feedback)}>
-                    Regenerate
-                  </button>
-                  <button className="button primary" type="button" onClick={save}>
-                    <Save size={17} />
-                    Save workout
-                  </button>
-                </div>
-                <ExportMenu workout={adjusted} cardRef={cardRef} />
-              </section>
-            </>
-          ) : (
+        <div className="stack">
+          {candidates === null && (
             <div className="panel empty">
-              <p>Adjusted workout card appears here after generation.</p>
+              <p>Choose a type and duration, then tap Find workouts to see options.</p>
             </div>
           )}
-        </aside>
+          {candidates !== null && candidates.length === 0 && (
+            <div className="panel empty">
+              <p>No matching workouts for this combination. Try a different type or level.</p>
+            </div>
+          )}
+          {candidates !== null && candidates.map((session, i) => (
+            <CandidateCard
+              key={`${session.recipe_id ?? session.type}-${i}`}
+              session={session}
+              onSave={() => handleSave(session)}
+            />
+          ))}
+        </div>
       </div>
     </>
   );

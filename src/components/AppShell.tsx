@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, CalendarRange, Home, LogOut, Plus, Settings } from "lucide-react";
+import { Activity, CalendarRange, Home, LogOut, Plus, Scissors, Settings } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { clearUser } from "@/lib/storage";
@@ -11,6 +11,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navItems = [
     { href: "/app", label: "Dashboard", icon: Home },
     { href: "/app/new", label: "New workout", icon: Plus },
+    { href: "/app/tailoring", label: "Tailor workout", icon: Scissors },
     { href: "/app/plans", label: "Training plans", icon: CalendarRange },
     { href: "/app/settings", label: "Settings", icon: Settings }
   ];

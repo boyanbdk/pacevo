@@ -36,9 +36,10 @@ export interface PlanInputs {
   current_weekly_km: number;
   longest_recent_km: number;
   recent_race?: RecentRace | null;
-  // User's estimated finish time for the goal race distance (seconds).
-  // Used to derive VDOT when no recent_race is available.
+  // User's estimated finish time for a known distance (not necessarily the goal race).
+  // Used with estimated_race_distance_m to derive VDOT via Riegel/VDOT table.
   estimated_race_time_s?: number | null;
+  estimated_race_distance_m?: number | null;
   age: number;
   resting_hr?: number | null;
   max_hr?: number | null;
