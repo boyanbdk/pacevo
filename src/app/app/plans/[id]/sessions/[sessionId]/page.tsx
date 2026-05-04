@@ -1,12 +1,12 @@
 "use client";
 
-import { ArrowLeft, CheckCircle, Clock, Heart, MapPin, Zap } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle, Clock, Heart, MapPin, Zap } from "lucide-react";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { formatPace } from "@/domain/training-plan";
+import { formatPace, renderIntensity } from "@/domain/training-plan";
 import { runAdaptations } from "@/domain/training-plan/adapt-plan";
-import type { PlannedSession, TrainingWeek } from "@/domain/training-plan/types";
+import type { IntensityMode, PlannedSession, TrainingWeek } from "@/domain/training-plan/types";
 import type { CompletedSession, SavedPlan } from "@/lib/plan-storage";
 import { applyAdaptation, getCompletedSession, getPlan, logSession } from "@/lib/plan-storage";
 
@@ -49,6 +49,12 @@ const PHASE_LABELS: Record<string, string> = {
 };
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+const MODE_LABELS: { value: IntensityMode; label: string }[] = [
+  { value: "pace", label: "Pace" },
+  { value: "rpe",  label: "RPE" },
+  { value: "hr",   label: "Heart rate" },
+];
 
 // ---------------------------------------------------------------------------
 // Log form
@@ -117,7 +123,6 @@ function LogSessionForm({
         source: "manual",
       });
 
-      // Re-load plan and run adaptations
       const refreshed = getPlan(plan.id)!;
       const today = new Date();
       const startDate = new Date(refreshed.plan.meta.start_date);
@@ -246,6 +251,33 @@ function LogSessionForm({
 }
 
 // ---------------------------------------------------------------------------
+// Intensity mode switcher
+// ---------------------------------------------------------------------------
+
+function ModeSwitcher({
+  mode,
+  onChange,
+}: {
+  mode: IntensityMode;
+  onChange: (m: IntensityMode) => void;
+}) {
+  return (
+    <div className="segmented" style={{ gridTemplateColumns: "repeat(3, 1fr)", maxWidth: 320 }}>
+      {MODE_LABELS.map(({ value, label }) => (
+        <button
+          key={value}
+          type="button"
+          className={mode === value ? "selected" : ""}
+          onClick={() => onChange(value)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -253,11 +285,16 @@ export default function SessionDetailPage() {
   const { id, sessionId } = useParams<{ id: string; sessionId: string }>();
   const [plan, setPlan] = useState<SavedPlan | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [intensityMode, setIntensityMode] = useState<IntensityMode>("pace");
 
   useEffect(() => {
     const p = getPlan(id);
     setPlan(p ?? null);
     setLoaded(true);
+    // Initialise mode from plan preference
+    if (p?.plan.meta.intensity_mode) {
+      setIntensityMode(p.plan.meta.intensity_mode);
+    }
   }, [id]);
 
   if (!loaded) return null;
@@ -277,11 +314,17 @@ export default function SessionDetailPage() {
   const paces = plan.plan.paces;
   const color = SESSION_COLORS[session.type] ?? "var(--muted)";
 
-  function fmtPaceRange(low: number | null, high: number | null): string {
-    if (!low && !high) return "—";
-    if (low && high) return `${formatPace(low)} – ${formatPace(high)}`;
-    return formatPace(low ?? high!);
-  }
+  const intensity = session.type !== "rest"
+    ? renderIntensity(
+        session.type,
+        session.pace_low_s_km,
+        session.pace_high_s_km,
+        session.hr_zone,
+        session.target_rpe,
+        plan.plan.hr_zones,
+        intensityMode,
+      )
+    : null;
 
   return (
     <>
@@ -300,10 +343,30 @@ export default function SessionDetailPage() {
             {existing && <span className="session-logged-badge">Logged</span>}
           </h1>
           <p>
-            {DAY_NAMES[session.day_index]} · Week {weekIndex + 1} · {PHASE_LABELS[week.phase]}
+            {DAY_NAMES[session.day_index - 1]} · Week {weekIndex + 1} · {PHASE_LABELS[week.phase]}
           </p>
         </div>
       </div>
+
+      {/* Intensity mode switcher */}
+      {session.type !== "rest" && (
+        <div style={{ marginBottom: 16 }}>
+          <ModeSwitcher mode={intensityMode} onChange={setIntensityMode} />
+          {intensity?.recommendedMode !== intensityMode && (
+            <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+              Recommended for this session: <strong>{intensity?.recommendedMode}</strong>
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* HR lag warning */}
+      {intensity?.warning && (
+        <div className="plan-warn" style={{ marginBottom: 14 }}>
+          <AlertCircle size={15} />
+          <span>{intensity.warning}</span>
+        </div>
+      )}
 
       {/* Key metrics */}
       <div className="grid-3" style={{ marginBottom: 18 }}>
@@ -321,27 +384,34 @@ export default function SessionDetailPage() {
             <span className="muted">Duration</span>
           </div>
         )}
-        {(session.pace_low_s_km || session.pace_high_s_km) && (
-          <div className="panel session-metric">
-            <Zap size={18} style={{ color }} />
-            <strong>{fmtPaceRange(session.pace_low_s_km, session.pace_high_s_km)}</strong>
-            <span className="muted">Target pace</span>
-          </div>
-        )}
-        {session.hr_zone && (
-          <div className="panel session-metric">
-            <Heart size={18} style={{ color }} />
-            <strong>{session.hr_zone}</strong>
-            <span className="muted">HR zone</span>
-          </div>
-        )}
-        {session.target_rpe && (
-          <div className="panel session-metric">
-            <span style={{ fontSize: 18, fontWeight: 900, color }}>{session.target_rpe}/10</span>
-            <span className="muted">RPE</span>
+
+        {/* Primary intensity metric — large */}
+        {intensity && (
+          <div className="panel session-metric" style={{ gridColumn: session.target_km ? undefined : "1 / -1" }}>
+            {intensityMode === "pace" && <Zap size={18} style={{ color }} />}
+            {intensityMode === "hr" && <Heart size={18} style={{ color }} />}
+            {intensityMode === "rpe" && (
+              <span style={{ fontSize: 18, fontWeight: 900, color }}>RPE</span>
+            )}
+            <strong>{intensity.primaryValue}</strong>
+            <span className="muted">{intensity.primaryLabel}</span>
           </div>
         )}
       </div>
+
+      {/* Secondary intensity metrics */}
+      {intensity && intensity.secondary.length > 0 && (
+        <div className="panel" style={{ marginBottom: 18 }}>
+          <div className="pace-ref-grid">
+            {intensity.secondary.map((item) => (
+              <div key={item.label}>
+                <span className="muted">{item.label}</span>
+                <strong>{item.value}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Actual results (if logged) */}
       {existing && (

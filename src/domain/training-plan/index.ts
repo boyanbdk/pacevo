@@ -1,4 +1,6 @@
 export { buildPlan } from "./build-plan";
-export { classifyRunner } from "./classify-runner";
+export { classifyRunner, resolveSafeLevel } from "./classify-runner";
 export { vdotFromRace, pacesFromVdot, riegelPredict, tanakaHrmax, hrZones, formatPace } from "./vdot";
-export type { PlanInputs, TrainingPlan, TrainingWeek, PlannedSession, Paces, HrZones, PlanMeta, GoalRace, Level, Phase, SessionType } from "./types";
+export { renderIntensity, RECOMMENDED_MODE, RPE_RANGES, HR_ZONE_LABELS, HR_LAG_WARNING, fmtPaceRange, hrBpmRange, fmtRpe } from "./training-intensity";
+export type { IntensityDisplay, SecondaryItem } from "./training-intensity";
+export type { PlanInputs, TrainingPlan, TrainingWeek, PlannedSession, Paces, HrZones, PlanMeta, GoalRace, Level, Phase, SessionType, IntensityMode } from "./types";
