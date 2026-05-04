@@ -413,6 +413,17 @@ button {
   color: var(--text);
 }
 
+.plan-pick-option {
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.plan-pick-option:hover {
+  border-color: rgba(181, 255, 74, 0.55);
+  background: rgba(181, 255, 74, 0.08);
+}
+
 .tag-row {
   display: flex;
   flex-wrap: wrap;

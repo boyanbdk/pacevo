@@ -34,7 +34,7 @@ import {
   logSession,
   recordWorkoutFeedback,
 } from "@/lib/plan-storage";
-import { getSettings } from "@/lib/storage";
+import { getSettings, getWorkoutForPlannedSession } from "@/lib/storage";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -533,6 +533,8 @@ export default function SessionDetailPage() {
   if (!session) notFound();
 
   const existing = getCompletedSession(id, weekIndex, dayIndex);
+  const tailoredWorkout = getWorkoutForPlannedSession(id, sessionId);
+  const latestTailored = tailoredWorkout?.adjustments.at(-1);
   const paces = plan.plan.paces;
   const color = SESSION_COLORS[session.type] ?? "var(--muted)";
 
@@ -700,6 +702,24 @@ export default function SessionDetailPage() {
         dayIndex={dayIndex}
         onSaved={setPlan}
       />
+
+      {tailoredWorkout && latestTailored && (
+        <div className="panel" style={{ marginBottom: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div>
+              <h3 style={{ margin: "0 0 8px" }}>Tailored variant</h3>
+              <p className="muted" style={{ margin: 0 }}>{latestTailored.adjustedWorkout.summary}</p>
+              <div className="tag-row" style={{ marginTop: 10 }}>
+                <span className="tag">Revision {latestTailored.revisionNumber}</span>
+                <span className="tag">Saved {new Date(latestTailored.createdAt).toLocaleDateString()}</span>
+              </div>
+            </div>
+            <Link className="button primary" href={`/app/workouts/${tailoredWorkout.id}`}>
+              Open tailored workout
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Description & rationale */}
       <div className="grid-2" style={{ marginBottom: 18 }}>

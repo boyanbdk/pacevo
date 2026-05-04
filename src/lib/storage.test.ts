@@ -1,5 +1,6 @@
 import { beforeEach, expect, test, vi } from "vitest";
-import { defaultSettings, getSettings, saveSettings } from "./storage";
+import type { SavedWorkout } from "@/domain/workout-schema";
+import { defaultSettings, getSettings, getWorkoutForPlannedSession, saveSettings, saveWorkout } from "./storage";
 
 function createMemoryStorage(): Storage {
   const values = new Map<string, string>();
@@ -56,4 +57,39 @@ test("explicit settings survive save and load", () => {
 
   expect(settings.intensityMode).toBe("pace");
   expect(settings.showEasyRunPaceTargets).toBe(true);
+});
+
+test("planned session workouts can be retrieved by linked session id", () => {
+  const baseWorkout: SavedWorkout = {
+    id: "workout-1",
+    title: "Plan workout",
+    sourceType: "plan",
+    sourceText: "Main set",
+    plannedSession: {
+      planId: "plan-1",
+      sessionId: "0-2",
+      weekIndex: 0,
+      dayIndex: 2,
+      date: "2026-05-06",
+    },
+    parsedWorkout: {
+      title: "Plan workout",
+      activityType: "running",
+      sourceSummary: "Main set",
+      steps: [],
+      uncertaintyFlags: [],
+    },
+    adjustments: [],
+    createdAt: "2026-05-04T08:00:00.000Z",
+    updatedAt: "2026-05-04T08:00:00.000Z",
+  };
+
+  saveWorkout(baseWorkout);
+  saveWorkout({
+    ...baseWorkout,
+    id: "workout-2",
+    updatedAt: "2026-05-04T09:00:00.000Z",
+  });
+
+  expect(getWorkoutForPlannedSession("plan-1", "0-2")?.id).toBe("workout-2");
 });

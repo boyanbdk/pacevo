@@ -64,6 +64,18 @@ export function getWorkout(id: string): SavedWorkout | undefined {
   return getWorkouts().find((workout) => workout.id === id);
 }
 
+export function getWorkoutForPlannedSession(
+  planId: string,
+  sessionId: string,
+): SavedWorkout | undefined {
+  return getWorkouts()
+    .filter((workout) =>
+      workout.plannedSession?.planId === planId &&
+      workout.plannedSession?.sessionId === sessionId
+    )
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0];
+}
+
 export function deleteWorkout(id: string) {
   localStorage.setItem(workoutsKey, JSON.stringify(getWorkouts().filter((workout) => workout.id !== id)));
 }

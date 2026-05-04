@@ -1,24 +1,85 @@
 "use client";
 
-import { Save, Sparkles, Upload } from "lucide-react";
+import { CalendarDays, Save, Sparkles, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AdjustedWorkoutCard } from "@/components/AdjustedWorkoutCard";
 import { ExportMenu } from "@/components/ExportMenu";
 import { parseWorkoutText } from "@/domain/parser";
+import { plannedSessionToParsedWorkout, plannedSessionToWorkoutText } from "@/domain/planned-session-tailoring";
 import { tailorWorkout } from "@/domain/run-tailor";
-import type { AdjustedWorkout, DisplayStyle, ParsedWorkout, TailoringInputs, WorkoutAdjustment } from "@/domain/workout-schema";
+import type { PlannedSession } from "@/domain/training-plan/types";
+import type { AdjustedWorkout, DisplayStyle, ParsedWorkout, PlannedSessionLink, SavedWorkout, TailoringInputs, WorkoutAdjustment } from "@/domain/workout-schema";
 import { DEMO_WORKOUTS } from "@/lib/demo-workouts";
-import { getSettings, saveSettings, saveWorkout } from "@/lib/storage";
+import { formatWeekdayDate, parsePlanDate } from "@/lib/plan-dates";
+import type { SavedPlan } from "@/lib/plan-storage";
+import { getPlans } from "@/lib/plan-storage";
+import { getSettings, getWorkoutForPlannedSession, saveSettings, saveWorkout } from "@/lib/storage";
+
+type PlannedSessionOption = {
+  plan: SavedPlan;
+  session: PlannedSession;
+  sessionId: string;
+  weekIndex: number;
+  dayIndex: number;
+  date: Date;
+};
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function upcomingPlannedSessions(): PlannedSessionOption[] {
+  const today = startOfDay(new Date());
+  const end = new Date(today);
+  end.setDate(end.getDate() + 7);
+  const options: PlannedSessionOption[] = [];
+
+  for (const plan of getPlans().filter((candidate) => candidate.status === "active")) {
+    plan.plan.weeks.forEach((week, weekIndex) => {
+      week.sessions.forEach((session) => {
+        if (session.type === "rest") return;
+        const date = startOfDay(parsePlanDate(session.date));
+        if (date < today || date > end) return;
+        options.push({
+          plan,
+          session,
+          sessionId: `${weekIndex}-${session.day_index}`,
+          weekIndex,
+          dayIndex: session.day_index,
+          date,
+        });
+      });
+    });
+  }
+
+  return options.sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
+function optionLabel(option: PlannedSessionOption): string {
+  return `${formatWeekdayDate(option.session.date)} · Week ${option.weekIndex + 1}`;
+}
+
+function plannedSessionLink(option: PlannedSessionOption): PlannedSessionLink {
+  return {
+    planId: option.plan.id,
+    sessionId: option.sessionId,
+    weekIndex: option.weekIndex,
+    dayIndex: option.dayIndex,
+    date: option.session.date,
+  };
+}
 
 export default function TailoringPage() {
   const router = useRouter();
   const cardRef = useRef<HTMLDivElement>(null);
   const settings = getSettings();
+  const plannedOptions = upcomingPlannedSessions();
   const [sourceText, setSourceText] = useState(DEMO_WORKOUTS[0].text);
   const [imagePreview, setImagePreview] = useState<string | undefined>();
   const [imageName, setImageName] = useState<string | undefined>();
   const [parsed, setParsed] = useState<ParsedWorkout | null>(null);
+  const [selectedPlannedSession, setSelectedPlannedSession] = useState<PlannedSessionOption | null>(null);
   const [displayStyle, setDisplayStyle] = useState<DisplayStyle>(settings.preferredDisplayStyle);
   const [feedback, setFeedback] = useState("");
   const [adjusted, setAdjusted] = useState<AdjustedWorkout | null>(null);
@@ -33,12 +94,33 @@ export default function TailoringPage() {
   });
 
   function parse() {
-    setParsed(parseWorkoutText(sourceText));
+    setParsed(selectedPlannedSession
+      ? plannedSessionToParsedWorkout(selectedPlannedSession.session)
+      : parseWorkoutText(sourceText)
+    );
+    setAdjusted(null);
+  }
+
+  function pickPlannedSession(option: PlannedSessionOption) {
+    const nextParsed = plannedSessionToParsedWorkout(option.session);
+    setSelectedPlannedSession(option);
+    setSourceText(plannedSessionToWorkoutText(option.session));
+    setImagePreview(undefined);
+    setImageName(undefined);
+    setParsed(nextParsed);
+    setAdjusted(null);
+  }
+
+  function updateSourceText(value: string) {
+    setSourceText(value);
+    setSelectedPlannedSession(null);
+    setParsed(null);
     setAdjusted(null);
   }
 
   function uploadImage(file: File | undefined) {
     if (!file) return;
+    setSelectedPlannedSession(null);
     const reader = new FileReader();
     reader.onload = () => {
       setImagePreview(String(reader.result));
@@ -65,6 +147,7 @@ export default function TailoringPage() {
   function save() {
     if (!parsed || !adjusted) return;
     const now = new Date().toISOString();
+    const linkedSession = selectedPlannedSession ? plannedSessionLink(selectedPlannedSession) : undefined;
     const adjustment: WorkoutAdjustment = {
       id: crypto.randomUUID(),
       inputs: adjusted.inputs,
@@ -74,17 +157,38 @@ export default function TailoringPage() {
       revisionNumber: 1,
       createdAt: now
     };
-    const workout = {
-      id: crypto.randomUUID(),
-      title: parsed.title,
-      sourceType: imagePreview ? "image" as const : "text" as const,
-      sourceText,
-      sourceImageDataUrl: imagePreview,
-      parsedWorkout: parsed,
-      adjustments: [adjustment],
-      createdAt: now,
-      updatedAt: now
-    };
+
+    const existing = linkedSession
+      ? getWorkoutForPlannedSession(linkedSession.planId, linkedSession.sessionId)
+      : undefined;
+    const workout: SavedWorkout = existing
+      ? {
+          ...existing,
+          title: parsed.title,
+          sourceText,
+          parsedWorkout: parsed,
+          plannedSession: linkedSession,
+          adjustments: [
+            ...existing.adjustments,
+            {
+              ...adjustment,
+              revisionNumber: (existing.adjustments.at(-1)?.revisionNumber ?? 0) + 1,
+            },
+          ],
+          updatedAt: now,
+        }
+      : {
+          id: crypto.randomUUID(),
+          title: parsed.title,
+          sourceType: linkedSession ? "plan" : imagePreview ? "image" : "text",
+          sourceText,
+          sourceImageDataUrl: imagePreview,
+          plannedSession: linkedSession,
+          parsedWorkout: parsed,
+          adjustments: [adjustment],
+          createdAt: now,
+          updatedAt: now
+        };
     saveWorkout(workout);
     router.push(`/app/workouts/${workout.id}`);
   }
@@ -103,6 +207,39 @@ export default function TailoringPage() {
           <section className="panel stack">
             <h2>1. Source</h2>
             <div className="field">
+              <label>Pick from your plan</label>
+              <div className="saved-list">
+                {plannedOptions.length > 0 ? plannedOptions.map((option) => (
+                  <button
+                    className="review-item plan-pick-option"
+                    key={`${option.plan.id}-${option.sessionId}`}
+                    onClick={() => pickPlannedSession(option)}
+                    style={{ textAlign: "left", width: "100%" }}
+                    type="button"
+                  >
+                    <strong>{option.session.description}</strong>
+                    <div className="muted">
+                      {optionLabel(option)} · {option.plan.plan.meta.goal_race} plan
+                      {option.session.target_km ? ` · ${option.session.target_km.toFixed(1)} km` : ""}
+                    </div>
+                  </button>
+                )) : (
+                  <div className="review-item">
+                    <strong>No upcoming planned runs</strong>
+                    <div className="muted">Paste or upload an ad-hoc workout below.</div>
+                  </div>
+                )}
+              </div>
+              {selectedPlannedSession && (
+                <div className="tag-row" style={{ marginTop: 8 }}>
+                  <span className="tag">
+                    <CalendarDays size={14} />
+                    Linked to {optionLabel(selectedPlannedSession)}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="field">
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                 <label htmlFor="source">Workout text</label>
                 <div className="button-row" style={{ gap: 4 }}>
@@ -111,14 +248,14 @@ export default function TailoringPage() {
                       key={demo.label}
                       className="button ghost compact"
                       type="button"
-                      onClick={() => { setSourceText(demo.text); setParsed(null); setAdjusted(null); }}
+                      onClick={() => updateSourceText(demo.text)}
                     >
                       {demo.label}
                     </button>
                   ))}
                 </div>
               </div>
-              <textarea className="textarea" id="source" value={sourceText} onChange={(event) => setSourceText(event.target.value)} />
+              <textarea className="textarea" id="source" value={sourceText} onChange={(event) => updateSourceText(event.target.value)} />
             </div>
             {imagePreview && (
               <div className="image-preview">
@@ -253,7 +390,7 @@ export default function TailoringPage() {
                   </button>
                   <button className="button primary" type="button" onClick={save}>
                     <Save size={17} />
-                    Save workout
+                    {selectedPlannedSession ? "Save to plan session" : "Save workout"}
                   </button>
                 </div>
                 <ExportMenu workout={adjusted} cardRef={cardRef} />

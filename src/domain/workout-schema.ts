@@ -85,12 +85,21 @@ export type WorkoutAdjustment = {
   createdAt: string;
 };
 
+export type PlannedSessionLink = {
+  planId: string;
+  sessionId: string;
+  weekIndex: number;
+  dayIndex: number;
+  date: string;
+};
+
 export type SavedWorkout = {
   id: string;
   title: string;
-  sourceType: "image" | "text";
+  sourceType: "image" | "text" | "plan";
   sourceText: string;
   sourceImageDataUrl?: string;
+  plannedSession?: PlannedSessionLink;
   parsedWorkout: ParsedWorkout;
   adjustments: WorkoutAdjustment[];
   createdAt: string;
