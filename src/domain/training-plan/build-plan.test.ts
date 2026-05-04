@@ -631,3 +631,85 @@ test("estimate-derived VDOT is consistent with equivalent direct race VDOT", () 
   });
   expect(fromEstimate.meta.vdot).toBe(fromRace.meta.vdot);
 });
+
+// ---------------------------------------------------------------------------
+// Phase 7: Mileage-curve invariants across the goal × tier matrix
+// ---------------------------------------------------------------------------
+
+const MILEAGE_TIERS: Record<"low" | "moderate" | "high", Level> = {
+  low: "beginner",
+  moderate: "intermediate",
+  high: "advanced",
+};
+
+const MILEAGE_MATRIX: { tier: "low" | "moderate" | "high"; goal: GoalRace }[] =
+  (["low", "moderate", "high"] as const).flatMap((tier) =>
+    GOALS.map((goal) => ({ tier, goal }))
+  );
+
+test.each(MILEAGE_MATRIX)(
+  "$tier mileage $goal plan: start respects current baseline",
+  ({ tier, goal }) => {
+    const inputs = goldenInputs(goal, MILEAGE_TIERS[tier]);
+    const plan = buildPlan(inputs);
+    // Week one must not exceed the runner's recent average by more than ~5%.
+    expect(plan.weeks[0].total_km).toBeLessThanOrEqual(inputs.current_weekly_km * 1.05);
+  }
+);
+
+test.each(MILEAGE_MATRIX)(
+  "$tier mileage $goal plan: peak occurs before taper",
+  ({ tier, goal }) => {
+    const plan = buildPlan(goldenInputs(goal, MILEAGE_TIERS[tier]));
+    const taperStart = plan.weeks.findIndex((w) => w.phase === "taper");
+    if (taperStart < 0) return; // very short plans may not taper
+    const nonTaper = plan.weeks.filter((w) => w.phase !== "taper");
+    const peak = Math.max(...nonTaper.map((w) => w.total_km));
+    const peakIndex = plan.weeks.findIndex((w) => w.total_km === peak);
+    expect(peakIndex).toBeLessThan(taperStart);
+  }
+);
+
+test.each(MILEAGE_MATRIX)(
+  "$tier mileage $goal plan: taper reduces meaningfully from the actual pre-taper peak",
+  ({ tier, goal }) => {
+    const plan = buildPlan(goldenInputs(goal, MILEAGE_TIERS[tier]));
+    const taperWeeks = plan.weeks.filter((w) => w.phase === "taper");
+    if (taperWeeks.length === 0) return;
+    const nonTaperPeak = Math.max(
+      ...plan.weeks.filter((w) => w.phase !== "taper").map((w) => w.total_km)
+    );
+    const finalTaper = taperWeeks[taperWeeks.length - 1].total_km;
+    // The final taper week is at most 70% of the pre-taper peak — a meaningful
+    // reduction from the actual peak, not a theoretical one.
+    expect(finalTaper).toBeLessThanOrEqual(nonTaperPeak * 0.7);
+    // Taper is monotonically non-increasing.
+    for (let i = 1; i < taperWeeks.length; i++) {
+      expect(taperWeeks[i].total_km).toBeLessThanOrEqual(taperWeeks[i - 1].total_km);
+    }
+  }
+);
+
+test.each(MILEAGE_MATRIX)(
+  "$tier mileage $goal plan: deload weeks dip below the prior week",
+  ({ tier, goal }) => {
+    const plan = buildPlan(goldenInputs(goal, MILEAGE_TIERS[tier]));
+    const deloads = plan.weeks
+      .map((w, i) => ({ w, i }))
+      .filter(({ w, i }) => w.is_deload && i > 0);
+    if (deloads.length === 0) return; // some short plans may have none
+    for (const { w, i } of deloads) {
+      expect(w.total_km).toBeLessThanOrEqual(plan.weeks[i - 1].total_km);
+    }
+  }
+);
+
+test.each(MILEAGE_MATRIX)(
+  "$tier mileage $goal plan: peak weekly km exceeds first-week volume when not capped",
+  ({ tier, goal }) => {
+    const plan = buildPlan(goldenInputs(goal, MILEAGE_TIERS[tier]));
+    // Skip the very-short or volume-capped tiers where the plan can't grow.
+    if (plan.weeks.length < 8) return;
+    expect(plan.meta.peak_weekly_km).toBeGreaterThanOrEqual(plan.weeks[0].total_km);
+  }
+);

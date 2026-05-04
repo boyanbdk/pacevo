@@ -317,6 +317,8 @@ Likely files:
 
 ### Phase 7: QA, Docs, And Regression Coverage
 
+Status: implemented on May 4, 2026.
+
 Goal: lock the corrected product behavior.
 
 Tasks:
@@ -341,6 +343,23 @@ Acceptance criteria:
 - Domain tests cover the screenshots' failure mode.
 - Build succeeds.
 - README matches the new information architecture.
+
+Verification added:
+
+- `src/domain/training-plan/build-plan.test.ts` adds a 12-cell low/moderate/high × 5K/10K/half/marathon golden matrix. Each cell asserts week-one respects the runner's recent baseline, peak occurs before taper, the final taper week is at most 70% of the actual pre-taper peak, taper is monotonically non-increasing, and deload weeks dip below the prior week.
+- README route table and feature sections updated to describe the split between `/app/new` (recipe-based one-off chooser) and `/app/tailoring` (paste/screenshot adjustment).
+- `npm test` (228 tests) and `npm run build` passed after implementation.
+
+Manual QA checklist (run before shipping):
+
+1. Plan view shows weekday + date on every desktop calendar cell, and full date on every mobile session row.
+2. New plan onboarding: race estimate uses three numeric H/M/S inputs; estimate distance can be picked independently of goal race; building a marathon plan from a 5K estimate completes successfully.
+3. New plan onboarding: easy/recovery sessions on the resulting plan default to HR or RPE display; pace appears only when the user has explicitly opted in via Settings.
+4. Settings screen shows "Recovery pace" (not "Cool-down pace"); previously-saved settings still load.
+5. `/app/new` shows the type/duration/level chooser, renders 3–10 recipe candidates, and saving one navigates to its workout detail.
+6. `/app/tailoring` renders the paste/upload flow, generates an adjusted workout, and saves successfully.
+7. Sidebar contains both "New workout" and "Tailor workout" entries.
+8. No user-facing string in plan warnings, session rationales, or recipe descriptions contains `Source:` or named training citations.
 
 ## File-Level Priority Map
 

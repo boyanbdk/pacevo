@@ -31,13 +31,19 @@ npm audit --omit=dev
 
 ### What the app includes
 
-#### Workout tailoring
+#### One-off workouts (`/app/new`)
+
+- Choose a workout type (recovery, easy, long, tempo, intervals), a target duration, and your level.
+- See 3–10 candidate sessions generated from the recipe library — warmup, main set, and cool-down for each.
+- Save any candidate to your workout history.
+
+#### Workout tailoring (`/app/tailoring`)
 
 - Paste a workout or upload a screenshot, then review the extracted structure.
-- Set tailoring inputs: run context (free run or treadmill), output format, easy pace, cool-down pace, walking rest pace, feeling (1–10), and push level (easy / normal / hard).
+- Set tailoring inputs: run context (free run or treadmill), output format, easy pace, recovery pace, walking rest pace, feeling (1–10), and push level (easy / normal / hard).
 - Generate an adjusted workout with correct speeds and paces for each step.
 - Satisfaction loop: describe what to change and regenerate.
-- Save workouts and view revision history.
+- Save tailored workouts and view revision history.
 - Export the adjusted workout card as PNG, PDF, or DOCX.
 - Four built-in demo workouts to try immediately: 800 m intervals, tempo 3 km, 400 m repeats, and a block long run.
 
@@ -45,7 +51,7 @@ npm audit --omit=dev
 
 - Build a personalised multi-week race-prep plan from a six-step onboarding form.
 - Supports goals: 5K, 10K, half marathon, marathon.
-- Inputs: goal date, current weekly km, longest recent run, recent race time or goal-race estimate, training focus, volume and difficulty preference, intensity display mode, constraints (days/week, session cap, long-run day, surface), and health data (age, HR, injury flags).
+- Inputs: goal date, current weekly km, longest recent run, recent race time, or a structured estimate (any of 5K / 10K / half / marathon — converted to your goal pace via Riegel), training focus, volume and difficulty preference, intensity display mode, constraints (days/week, session cap, long-run day, surface), and health data (age, HR, injury flags).
 - Level (beginner / intermediate / advanced) can be selected, but the engine still infers a safe level from mileage, long-run history, and race estimate; riskier overrides are clamped to the safer level.
 - Plans follow VDOT-based pacing, RPE and HR target metadata, polarised 80/20 intensity distribution, structured deload weeks, and evidence-based taper.
 - Workouts are generated from a recipe library rather than fixed text, with varied easy, long-run, tempo, interval, hills, and fartlek sessions chosen by goal, phase, level, schedule, and preferences.
@@ -71,7 +77,8 @@ npm audit --omit=dev
 |------|-------------|
 | `/login` `/register` | Local auth |
 | `/app` | Dashboard — active plan, next run, weekly progress, recent activity |
-| `/app/new` | New workout flow |
+| `/app/new` | One-off workout chooser — pick type, duration, and level; preview recipe-based candidates and save |
+| `/app/tailoring` | Tailor a pasted or uploaded workout for how you feel today |
 | `/app/workouts/[id]` | Saved workout detail, regenerate, export |
 | `/app/plans` | All training plans |
 | `/app/plans/new` | Plan onboarding form |
