@@ -3,6 +3,7 @@ import type { CompletedSession } from "@/lib/plan-storage";
 
 export type ImportedActivity = {
   id: string;
+  providerActivityId?: string;
   source: "gpx" | "tcx" | "strava";
   fileName: string;
   name: string;
@@ -10,6 +11,8 @@ export type ImportedActivity = {
   date: string;
   distanceKm: number;
   durationMin: number;
+  movingTimeMin?: number | null;
+  elapsedTimeMin?: number | null;
   avgHR: number | null;
   maxHR: number | null;
 };

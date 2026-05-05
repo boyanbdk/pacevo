@@ -37,11 +37,23 @@ create table if not exists provider_connections (
   access_token_ciphertext text not null,
   refresh_token_ciphertext text not null,
   access_token_expires_at timestamptz not null,
+  last_synced_at timestamptz,
+  last_sync_started_at timestamptz,
+  last_sync_error text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (provider, provider_user_id),
   unique (user_id, provider)
 );
+
+alter table provider_connections
+  add column if not exists last_synced_at timestamptz;
+
+alter table provider_connections
+  add column if not exists last_sync_started_at timestamptz;
+
+alter table provider_connections
+  add column if not exists last_sync_error text;
 
 create table if not exists provider_activities (
   id uuid primary key default gen_random_uuid(),
@@ -55,6 +67,8 @@ create table if not exists provider_activities (
   local_date date not null,
   distance_km numeric not null,
   duration_min numeric not null,
+  moving_time_min numeric,
+  elapsed_time_min numeric,
   avg_hr integer,
   max_hr integer,
   raw jsonb not null default '{}'::jsonb,
@@ -63,6 +77,12 @@ create table if not exists provider_activities (
   updated_at timestamptz not null default now(),
   unique (provider, provider_activity_id)
 );
+
+alter table provider_activities
+  add column if not exists moving_time_min numeric;
+
+alter table provider_activities
+  add column if not exists elapsed_time_min numeric;
 
 create table if not exists provider_webhook_events (
   id uuid primary key default gen_random_uuid(),

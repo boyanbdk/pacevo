@@ -112,8 +112,9 @@ function normalizeActivity(
   }
 
   const distanceKm = Math.round(((activity.distance ?? 0) / 1000) * 100) / 100;
-  const durationSeconds = activity.moving_time ?? activity.elapsed_time ?? 0;
-  const durationMin = Math.round((durationSeconds / 60) * 10) / 10;
+  const movingTimeMin = activity.moving_time ? Math.round((activity.moving_time / 60) * 10) / 10 : null;
+  const elapsedTimeMin = activity.elapsed_time ? Math.round((activity.elapsed_time / 60) * 10) / 10 : null;
+  const durationMin = movingTimeMin ?? elapsedTimeMin ?? 0;
   if (distanceKm <= 0 || durationMin <= 0) {
     throw new Error(`Strava activity ${activity.id} does not look like a completed distance activity.`);
   }
@@ -128,6 +129,8 @@ function normalizeActivity(
     localDate: localDateFromActivity(activity),
     distanceKm,
     durationMin,
+    movingTimeMin,
+    elapsedTimeMin,
     avgHr: activity.average_heartrate ? Math.round(activity.average_heartrate) : null,
     maxHr: activity.max_heartrate ? Math.round(activity.max_heartrate) : null,
     raw: activity,
@@ -195,4 +198,3 @@ export function verifyStravaWebhookSignature(rawBody: string, header: string | n
 export async function getConnectionForStravaOwner(ownerId: string): Promise<ProviderConnectionRow | null> {
   return getStravaConnectionByAthleteId(ownerId);
 }
-

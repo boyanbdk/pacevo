@@ -1142,6 +1142,51 @@ button {
   font-size: 13px;
 }
 
+/* ============================================================
+   Activity detail
+   ============================================================ */
+
+.activity-detail-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.activity-detail-empty {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.activity-hero {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.activity-hero div {
+  min-height: 110px;
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  padding: 18px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.activity-hero strong {
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.activity-metrics svg,
+.activity-hero svg {
+  color: var(--brand-2);
+}
+
 @media (max-width: 900px) {
   .dashboard-empty,
   .dashboard-main-grid {
@@ -1166,6 +1211,10 @@ button {
     grid-column: 2 / -1;
     justify-self: start;
     margin-bottom: 8px;
+  }
+
+  .activity-hero {
+    grid-template-columns: 1fr;
   }
 }
 

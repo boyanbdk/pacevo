@@ -30,6 +30,8 @@ export type ProviderActivityInput = {
   localDate: string;
   distanceKm: number;
   durationMin: number;
+  movingTimeMin: number | null;
+  elapsedTimeMin: number | null;
   avgHr: number | null;
   maxHr: number | null;
   raw: unknown;
@@ -164,6 +166,41 @@ export async function updateStravaConnectionTokens(
   return connection;
 }
 
+export async function markStravaSyncStarted(connectionId: string): Promise<void> {
+  await patchRows(
+    "provider_connections",
+    {
+      last_sync_started_at: new Date().toISOString(),
+      last_sync_error: null,
+      updated_at: new Date().toISOString(),
+    },
+    { id: `eq.${connectionId}` },
+  );
+}
+
+export async function markStravaSyncSucceeded(connectionId: string): Promise<void> {
+  await patchRows(
+    "provider_connections",
+    {
+      last_synced_at: new Date().toISOString(),
+      last_sync_error: null,
+      updated_at: new Date().toISOString(),
+    },
+    { id: `eq.${connectionId}` },
+  );
+}
+
+export async function markStravaSyncFailed(connectionId: string, message: string): Promise<void> {
+  await patchRows(
+    "provider_connections",
+    {
+      last_sync_error: message.slice(0, 500),
+      updated_at: new Date().toISOString(),
+    },
+    { id: `eq.${connectionId}` },
+  );
+}
+
 export async function upsertProviderActivity(input: ProviderActivityInput): Promise<ProviderActivityRow> {
   const [activity] = await upsertRows(
     "provider_activities",
@@ -178,6 +215,8 @@ export async function upsertProviderActivity(input: ProviderActivityInput): Prom
       local_date: input.localDate,
       distance_km: input.distanceKm,
       duration_min: input.durationMin,
+      moving_time_min: input.movingTimeMin,
+      elapsed_time_min: input.elapsedTimeMin,
       avg_hr: input.avgHr,
       max_hr: input.maxHr,
       raw: input.raw,
@@ -193,6 +232,16 @@ export async function listProviderActivitiesForUser(userId: string): Promise<Pro
     user_id: `eq.${userId}`,
     order: "local_date.desc",
   });
+}
+
+export async function getProviderActivityForUser(userId: string, providerActivityId: string): Promise<ProviderActivityRow | null> {
+  const [activity] = await selectRows<ProviderActivityRow>("provider_activities", {
+    user_id: `eq.${userId}`,
+    provider: "eq.strava",
+    provider_activity_id: `eq.${providerActivityId}`,
+    limit: 1,
+  });
+  return activity ?? null;
 }
 
 export async function recordWebhookEvent(input: {

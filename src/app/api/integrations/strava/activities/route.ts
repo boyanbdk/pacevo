@@ -3,8 +3,12 @@ import { currentUser } from "@/lib/server/auth";
 import {
   getStravaConnectionForUser,
   listProviderActivitiesForUser,
+  markStravaSyncFailed,
+  markStravaSyncStarted,
+  markStravaSyncSucceeded,
 } from "@/lib/server/integration-db";
 import { fetchAndStoreRecentStravaActivities } from "@/lib/server/strava";
+import { stravaActivityPayload, stravaConnectionMetadata } from "@/lib/server/strava-activity-payload";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -17,29 +21,43 @@ export async function GET(request: Request) {
 
   const connection = await getStravaConnectionForUser(user.id);
   if (!connection) {
-    return NextResponse.json({ connected: false, activities: [] });
+    return NextResponse.json({
+      connected: false,
+      lastSyncedAt: null,
+      lastSyncStartedAt: null,
+      lastSyncError: null,
+      activities: [],
+    });
   }
 
   let synced = 0;
   if (sync) {
-    synced = await fetchAndStoreRecentStravaActivities(connection);
+    await markStravaSyncStarted(connection.id);
+    try {
+      synced = await fetchAndStoreRecentStravaActivities(connection);
+      await markStravaSyncSucceeded(connection.id);
+    } catch (error) {
+      await markStravaSyncFailed(connection.id, error instanceof Error ? error.message : "Strava sync failed.");
+      const activities = await listProviderActivitiesForUser(user.id);
+      return NextResponse.json({
+        connected: true,
+        synced: 0,
+        ...stravaConnectionMetadata({
+          ...connection,
+          last_sync_error: error instanceof Error ? error.message : "Strava sync failed.",
+        }),
+        activities: activities.map(stravaActivityPayload),
+        error: error instanceof Error ? error.message : "Strava sync failed.",
+      });
+    }
   }
 
+  const latestConnection = sync ? await getStravaConnectionForUser(user.id) : connection;
   const activities = await listProviderActivitiesForUser(user.id);
   return NextResponse.json({
     connected: true,
     synced,
-    activities: activities.map((activity) => ({
-      id: `strava:${activity.provider_activity_id}`,
-      source: "strava",
-      fileName: "Strava",
-      name: activity.name,
-      startedAt: activity.started_at,
-      date: activity.local_date,
-      distanceKm: Number(activity.distance_km),
-      durationMin: Number(activity.duration_min),
-      avgHR: activity.avg_hr,
-      maxHR: activity.max_hr,
-    })),
+    ...stravaConnectionMetadata(latestConnection ?? connection),
+    activities: activities.map(stravaActivityPayload),
   });
 }

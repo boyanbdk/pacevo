@@ -10,6 +10,7 @@ import {
   planStatus,
   preferenceSignal,
   recentActivity,
+  stravaActivityItems,
   weeksRemaining,
 } from "./training-dashboard";
 
@@ -297,4 +298,24 @@ test("recentActivity merges logs, adaptations, swaps, and one-off workouts newes
     "Imported run",
   ]);
   expect(activity[2].href).toBe("/app/plans/plan-1/sessions/0-3");
+});
+
+test("stravaActivityItems link to activity detail pages instead of the plan", () => {
+  const saved = plan();
+
+  const [item] = stravaActivityItems(saved, [{
+    id: "strava:12345",
+    providerActivityId: "12345",
+    source: "strava",
+    fileName: "Strava",
+    name: "Morning Run",
+    startedAt: "2026-05-07T06:00:00.000Z",
+    date: "2026-05-07",
+    distanceKm: 6.2,
+    durationMin: 34,
+    avgHR: 145,
+    maxHR: null,
+  }]);
+
+  expect(item.href).toBe("/app/activities/strava/12345");
 });

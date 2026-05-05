@@ -13,11 +13,18 @@ import {
 import { toPng } from "html-to-image";
 import { jsPDF } from "jspdf";
 import { groupAdjustedSteps } from "../domain/run-tailor";
-import type { AdjustedWorkout, UserSettings } from "../domain/workout-schema";
+import type { AdjustedWorkout } from "../domain/workout-schema";
 import type { AdjustedStepGroup } from "../domain/workout-schema";
-import type { PlannedSession, TrainingPlan } from "../domain/training-plan/types";
-import { BRAND_EXPORT_LABEL, BRAND_MOTTO, BRAND_NAME } from "./brand";
-import { formatPlanDate, formatWeekRange, formatWeekdayDate } from "./plan-dates";
+import type { TrainingPlan } from "../domain/training-plan/types";
+import { BRAND_MOTTO, BRAND_NAME } from "./brand";
+import {
+  buildPlanExportModel,
+  planGoalLabel,
+  planPaceReferenceText,
+  sessionPaceForExport as modelSessionPaceForExport,
+  type PlanExportOptions,
+} from "./export-model";
+import { planExportCsvText, planExportJsonText } from "./export-renderers/data";
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -26,6 +33,10 @@ function downloadBlob(blob: Blob, filename: string) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function downloadText(text: string, filename: string, type: string) {
+  downloadBlob(new Blob([text], { type }), filename);
 }
 
 function slugify(value: string) {
@@ -119,72 +130,14 @@ export function exportWorkoutPdf(workout: AdjustedWorkout) {
 // Training plan exports
 // ---------------------------------------------------------------------------
 
-const PLAN_SESSION_LABELS: Record<string, string> = {
-  easy: "Easy",
-  long: "Long run",
-  tempo: "Tempo",
-  interval: "Intervals",
-  repetition: "Reps",
-  marathon_pace: "MP",
-  recovery: "Recovery",
-  strides: "Strides",
-  fartlek: "Fartlek",
-  hills: "Hills",
-  cross: "Cross-training",
-  rest: "Rest",
-};
-
-const PLAN_PHASE_LABELS: Record<string, string> = {
-  base: "Base",
-  build: "Build",
-  peak: "Peak",
-  taper: "Taper",
-};
-
-const PLAN_GOAL_LABELS: Record<string, string> = {
-  "5K": "5K",
-  "10K": "10K",
-  half: "Half Marathon",
-  marathon: "Marathon",
-};
-
-function fmtPace(s: number | null): string {
-  if (s === null) return "—";
-  const min = Math.floor(s / 60);
-  const sec = Math.round(s % 60);
-  return `${min}:${sec.toString().padStart(2, "0")}/km`;
-}
-
-type PlanExportOptions = Pick<UserSettings, "defaultEasyPace" | "defaultCooldownPace" | "showEasyRunPaceTargets">;
-
-const EASY_PACE_OPTIONAL_TYPES = new Set(["easy", "recovery"]);
-
-function fmtSettingPace(value: string | undefined): string | null {
-  const trimmed = value?.trim();
-  if (!trimmed) return null;
-  return trimmed.includes("/") ? trimmed : `${trimmed}/km`;
-}
-
 export function planPaceReference(plan: TrainingPlan, options?: PlanExportOptions): string {
-  return [
-    fmtSettingPace(options?.defaultEasyPace) ? `Easy setting: ${fmtSettingPace(options?.defaultEasyPace)}` : null,
-    fmtSettingPace(options?.defaultCooldownPace) ? `Recovery setting: ${fmtSettingPace(options?.defaultCooldownPace)}` : null,
-    plan.paces.T ? `Tempo: ${fmtPace(plan.paces.T)}` : null,
-    plan.paces.I ? `Intervals: ${fmtPace(plan.paces.I)}` : null,
-    plan.paces.M ? `MP: ${fmtPace(plan.paces.M)}` : null,
-  ].filter(Boolean).join("   ·   ");
+  return planPaceReferenceText(plan, options);
 }
 
-export function sessionPaceForExport(session: PlannedSession, options?: PlanExportOptions): string {
-  if (EASY_PACE_OPTIONAL_TYPES.has(session.type)) {
-    if (options?.showEasyRunPaceTargets !== true) return "";
-    const setting = session.type === "recovery" ? options.defaultCooldownPace : options.defaultEasyPace;
-    return fmtSettingPace(setting) ?? "";
-  }
-  return session.pace_low_s_km ? fmtPace(session.pace_low_s_km) : "";
-}
+export const sessionPaceForExport = modelSessionPaceForExport;
 
 export function exportPlanPdf(plan: TrainingPlan, options?: PlanExportOptions) {
+  const model = buildPlanExportModel(plan, options);
   const pdf = new jsPDF({ unit: "pt", format: "a4" });
   const margin = 44;
   const pageWidth = 595;
@@ -207,41 +160,33 @@ export function exportPlanPdf(plan: TrainingPlan, options?: PlanExportOptions) {
   pdf.setTextColor(245, 247, 242);
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(22);
-  pdf.text(`${PLAN_GOAL_LABELS[plan.meta.goal_race] ?? plan.meta.goal_race} Training Plan`, margin, y);
+  pdf.text(model.title, margin, y);
   y += 18;
 
   // Brand line
   pdf.setTextColor(201, 255, 64);
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(10);
-  pdf.text(BRAND_EXPORT_LABEL, margin, y);
+  pdf.text(model.brand.label, margin, y);
   y += 20;
 
   // Subtitle
   pdf.setTextColor(200, 200, 200);
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(10);
-  const goalDate = formatPlanDate(plan.meta.goal_date, {
-    month: "long", day: "numeric", year: "numeric",
-  });
-  pdf.text(
-    `${plan.meta.level.toUpperCase()} · ${plan.meta.weeks_total} WEEKS · GOAL: ${goalDate}`,
-    margin,
-    y,
-  );
+  pdf.text(model.subtitle.toUpperCase(), margin, y);
   y += 26;
 
   // Pace reference line
   pdf.setTextColor(200, 200, 200);
   pdf.setFontSize(9);
-  const paceItems = planPaceReference(plan, options);
+  const paceItems = planPaceReferenceText(plan, options);
   pdf.text(paceItems, margin, y);
   y += 24;
 
   // Weeks
-  for (const week of plan.weeks) {
-    const runningSessions = week.sessions.filter((s) => s.type !== "rest");
-    const weekHeight = 18 + runningSessions.length * 13 + 10;
+  for (const week of model.weeks) {
+    const weekHeight = 18 + week.sessions.length * 13 + 10;
     if (y + weekHeight > pageHeight - 44) {
       newPage();
     }
@@ -250,9 +195,8 @@ export function exportPlanPdf(plan: TrainingPlan, options?: PlanExportOptions) {
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(10);
     pdf.setTextColor(245, 247, 242);
-    const deloadLabel = week.is_deload ? " · Deload" : "";
     pdf.text(
-      `Week ${week.week_index + 1}  -  ${formatWeekRange(week)}  -  ${PLAN_PHASE_LABELS[week.phase]}${deloadLabel}  ·  ${week.total_km.toFixed(0)} km`,
+      `Week ${week.number}  -  ${week.dateRange}  -  ${week.label}  ·  ${week.totalDistance}`,
       margin,
       y,
     );
@@ -262,36 +206,32 @@ export function exportPlanPdf(plan: TrainingPlan, options?: PlanExportOptions) {
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(9);
     pdf.setTextColor(180, 180, 180);
-    for (const session of runningSessions) {
-      const distStr = session.target_km ? `${session.target_km.toFixed(1)} km` : "";
-      const paceStr = sessionPaceForExport(session, options);
-      const detail = [distStr, paceStr].filter(Boolean).join(" · ");
-      const label = PLAN_SESSION_LABELS[session.type] ?? session.type;
-      const line = `  ${formatWeekdayDate(session.date)}   ${label}${detail ? "   " + detail : ""}`;
+    for (const session of week.sessions) {
+      const detail = [session.distance, session.pace].filter(Boolean).join(" · ");
+      const line = `  ${session.weekdayDate}   ${session.label}${detail ? "   " + detail : ""}`;
       pdf.text(line, margin, y);
       y += 12;
     }
     y += 8;
   }
 
-  pdf.save(`${slugify(PLAN_GOAL_LABELS[plan.meta.goal_race] ?? "plan")}-training-plan.pdf`);
+  pdf.save(`${slugify(planGoalLabel(plan.meta.goal_race))}-training-plan.pdf`);
 }
 
 export async function exportPlanDocx(plan: TrainingPlan, options?: PlanExportOptions) {
-  const goalLabel = PLAN_GOAL_LABELS[plan.meta.goal_race] ?? plan.meta.goal_race;
-  const goalDate = formatPlanDate(plan.meta.goal_date, {
-    month: "long", day: "numeric", year: "numeric",
-  });
+  const model = buildPlanExportModel(plan, options);
+  const goalLabel = planGoalLabel(plan.meta.goal_race);
+  const paceText = model.paceReference.map((item) => `${item.label}: ${item.value}`).join("   ·   ");
 
   const children: (Paragraph | Table)[] = [
     new Paragraph({
-      text: `${goalLabel} Training Plan`,
+      text: model.title,
       heading: HeadingLevel.TITLE,
     }),
     new Paragraph({
       children: [
         new TextRun({
-          text: BRAND_EXPORT_LABEL,
+          text: model.brand.label,
           bold: true,
         }),
       ],
@@ -299,7 +239,7 @@ export async function exportPlanDocx(plan: TrainingPlan, options?: PlanExportOpt
     new Paragraph({
       children: [
         new TextRun({
-          text: `${plan.meta.level.charAt(0).toUpperCase() + plan.meta.level.slice(1)} · ${plan.meta.weeks_total} weeks · Goal: ${goalDate}`,
+          text: model.subtitle,
           bold: true,
         }),
       ],
@@ -307,18 +247,17 @@ export async function exportPlanDocx(plan: TrainingPlan, options?: PlanExportOpt
     new Paragraph({
       children: [
         new TextRun({
-          text: `Paces — ${planPaceReference(plan, options)}`,
+          text: `Paces - ${paceText}`,
         }),
       ],
       spacing: { after: 300 },
     }),
   ];
 
-  for (const week of plan.weeks) {
-    const deloadLabel = week.is_deload ? " (Deload)" : "";
+  for (const week of model.weeks) {
     children.push(
       new Paragraph({
-        text: `Week ${week.week_index + 1} - ${formatWeekRange(week)} - ${PLAN_PHASE_LABELS[week.phase]}${deloadLabel}   ${week.total_km.toFixed(0)} km`,
+        text: `Week ${week.number} - ${week.dateRange} - ${week.label}   ${week.totalDistance}`,
         heading: HeadingLevel.HEADING_2,
         spacing: { before: 240 },
       }),
@@ -335,20 +274,18 @@ export async function exportPlanDocx(plan: TrainingPlan, options?: PlanExportOpt
             }),
         ),
       }),
-      ...week.sessions
-        .filter((s) => s.type !== "rest")
-        .map(
-          (session) =>
-            new TableRow({
-              children: [
-                new TableCell({ children: [new Paragraph(formatWeekdayDate(session.date))] }),
-                new TableCell({ children: [new Paragraph(PLAN_SESSION_LABELS[session.type] ?? session.type)] }),
-                new TableCell({ children: [new Paragraph(session.target_km ? `${session.target_km.toFixed(1)} km` : "—")] }),
-                new TableCell({ children: [new Paragraph(sessionPaceForExport(session, options) || "—")] }),
-                new TableCell({ children: [new Paragraph(session.description ?? "")] }),
-              ],
-            }),
-        ),
+      ...week.sessions.map(
+        (session) =>
+          new TableRow({
+            children: [
+              new TableCell({ children: [new Paragraph(session.weekdayDate)] }),
+              new TableCell({ children: [new Paragraph(session.label)] }),
+              new TableCell({ children: [new Paragraph(session.distance || "-")] }),
+              new TableCell({ children: [new Paragraph(session.pace || "-")] }),
+              new TableCell({ children: [new Paragraph(session.description)] }),
+            ],
+          }),
+      ),
     ];
 
     children.push(
@@ -374,6 +311,24 @@ export async function exportPlanDocx(plan: TrainingPlan, options?: PlanExportOpt
 
   const blob = await Packer.toBlob(doc);
   downloadBlob(blob, `${slugify(goalLabel)}-training-plan.docx`);
+}
+
+export function exportPlanCsv(plan: TrainingPlan, options?: PlanExportOptions) {
+  const model = buildPlanExportModel(plan, options);
+  downloadText(
+    planExportCsvText(model),
+    `${slugify(planGoalLabel(plan.meta.goal_race))}-training-plan.csv`,
+    "text/csv;charset=utf-8",
+  );
+}
+
+export function exportPlanJson(plan: TrainingPlan, options?: PlanExportOptions) {
+  const model = buildPlanExportModel(plan, options);
+  downloadText(
+    planExportJsonText(model),
+    `${slugify(planGoalLabel(plan.meta.goal_race))}-training-plan.json`,
+    "application/json;charset=utf-8",
+  );
 }
 
 export async function exportPlanWeekImage(node: HTMLElement, goalRace: string, weekIndex: number) {

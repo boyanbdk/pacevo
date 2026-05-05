@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, ArrowLeft, ChevronRight, Download, FileImage, FileText, FileUp, GitBranch, History, LayoutGrid, Target, X, Zap } from "lucide-react";
+import { Archive, ArrowLeft, ChevronRight, Download, FileImage, FileJson, FileSpreadsheet, FileText, FileUp, GitBranch, History, LayoutGrid, Target, X, Zap } from "lucide-react";
 import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -13,7 +13,7 @@ import { BRAND_EXPORT_LABEL, BRAND_NAME } from "@/lib/brand";
 import { formatShortPlanDate, formatWeekRange, formatWeekdayDate, parsePlanDate } from "@/lib/plan-dates";
 import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
 import { applyAdaptation, getPlan, getWorkoutPreferences, logSession, removeCompletedSession, updatePlanStatus } from "@/lib/plan-storage";
-import { exportPlanDocx, exportPlanPdf, exportPlanWeekImage } from "@/lib/export";
+import { exportPlanCsv, exportPlanDocx, exportPlanJson, exportPlanPdf, exportPlanWeekImage } from "@/lib/export";
 import { getSettings } from "@/lib/storage";
 import type { UserSettings } from "@/domain/workout-schema";
 
@@ -124,7 +124,7 @@ function weekLabel(week: TrainingWeek): string {
 
 function matchStatusLabel(status: ActivityMatch["status"]): string {
   switch (status) {
-    case "auto": return "Ready";
+    case "auto": return "Pre-selected";
     case "suggestion": return "Review";
     case "duplicate": return "Logged";
     case "unmatched": return "Unmatched";
@@ -166,6 +166,7 @@ function ImportedActivityPanel({
   const [overrides, setOverrides] = useState<Record<string, { weekIndex: number; dayIndex: number } | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
 
   function refreshMatches(nextPlan: SavedPlan, nextActivities = activities) {
@@ -195,15 +196,20 @@ function ImportedActivityPanel({
     }
   }
 
-  async function loadStravaActivities() {
+  async function loadStravaActivities(sync = false) {
     setError(null);
     setMessage(null);
     setImporting(true);
     try {
-      const response = await fetch("/api/integrations/strava/activities?sync=1");
+      const response = await fetch(sync ? "/api/integrations/strava/activities/sync" : "/api/integrations/strava/activities", {
+        method: sync ? "POST" : "GET",
+        cache: "no-store",
+      });
       const payload = await response.json() as {
         connected?: boolean;
         synced?: number;
+        lastSyncedAt?: string | null;
+        lastSyncError?: string | null;
         activities?: ImportedActivity[];
         error?: string;
       };
@@ -216,9 +222,17 @@ function ImportedActivityPanel({
       }
 
       const runs = payload.activities ?? [];
+      setLastSyncedAt(payload.lastSyncedAt ?? null);
       setActivities(runs);
       setMatches(matchImportedActivities(plan.plan, runs, plan.completedSessions));
-      setMessage(`Loaded ${runs.length} Strava activit${runs.length === 1 ? "y" : "ies"}.`);
+      setMessage(
+        sync
+          ? `Synced ${payload.synced ?? 0} new Strava activit${payload.synced === 1 ? "y" : "ies"}; ${runs.length} stored.`
+          : `Loaded ${runs.length} stored Strava activit${runs.length === 1 ? "y" : "ies"}.`,
+      );
+      if (payload.lastSyncError || payload.error) {
+        setError(payload.lastSyncError ?? payload.error ?? null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load Strava activities.");
     } finally {
@@ -345,8 +359,11 @@ function ImportedActivityPanel({
           <h3>Activity files</h3>
           <p className="muted">GPX and TCX files, or connected Strava runs synced through the backend.</p>
         </div>
-        <button className="button secondary" type="button" onClick={loadStravaActivities} disabled={importing}>
-          Load Strava runs
+        <button className="button secondary" type="button" onClick={() => loadStravaActivities(false)} disabled={importing}>
+          Load stored
+        </button>
+        <button className="button ghost" type="button" onClick={() => loadStravaActivities(true)} disabled={importing}>
+          Sync Strava
         </button>
         <label className="button primary import-file-button">
           Choose files
@@ -362,6 +379,7 @@ function ImportedActivityPanel({
 
       {error && <div className="plan-warn">{error}</div>}
       {message && <div className="adapt-banner" style={{ marginBottom: 0 }}>{message}</div>}
+      {lastSyncedAt && <p className="muted" style={{ margin: 0 }}>Last Strava sync: {formatWeekdayDate(lastSyncedAt)}</p>}
 
       {matches.length > 0 && (
         <>
@@ -1046,6 +1064,14 @@ export default function PlanDetailPage() {
           <button className="button ghost" title="Export full plan as DOCX" onClick={() => exportPlanDocx(plan.plan, settings)}>
             <Download size={16} />
             DOCX
+          </button>
+          <button className="button ghost" title="Export full plan as CSV" onClick={() => exportPlanCsv(plan.plan, settings)}>
+            <FileSpreadsheet size={16} />
+            CSV
+          </button>
+          <button className="button ghost" title="Export full plan as JSON" onClick={() => exportPlanJson(plan.plan, settings)}>
+            <FileJson size={16} />
+            JSON
           </button>
           <button className="button ghost" title={plan.status === "archived" ? "Restore plan" : "Archive plan"} onClick={handleArchive}>
             <Archive size={16} />

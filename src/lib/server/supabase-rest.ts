@@ -30,6 +30,9 @@ export type ProviderConnectionRow = {
   access_token_ciphertext: string;
   refresh_token_ciphertext: string;
   access_token_expires_at: string;
+  last_synced_at: string | null;
+  last_sync_started_at: string | null;
+  last_sync_error: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -46,6 +49,8 @@ export type ProviderActivityRow = {
   local_date: string;
   distance_km: number;
   duration_min: number;
+  moving_time_min: number | null;
+  elapsed_time_min: number | null;
   avg_hr: number | null;
   max_hr: number | null;
   raw: unknown;

@@ -1,5 +1,6 @@
 import { calculateWorkoutPreferences } from "../domain/training-plan";
 import type { PlannedSession, TrainingWeek } from "../domain/training-plan";
+import type { ImportedActivity } from "../domain/training-plan/activity-import";
 import type { SavedWorkout } from "../domain/workout-schema";
 import { BRAND_NAME } from "./brand";
 import type { CompletedSession, SavedPlan } from "./plan-storage";
@@ -240,4 +241,26 @@ export function recentActivity(plan: SavedPlan, workouts: SavedWorkout[]): Activ
   return [...logs, ...adaptations, ...swaps, ...oneOffs]
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, 6);
+}
+
+function stravaRouteId(activity: ImportedActivity): string {
+  return encodeURIComponent(activity.providerActivityId ?? activity.id.replace(/^strava:/, ""));
+}
+
+export function stravaActivityItems(plan: SavedPlan, activities: ImportedActivity[]): ActivityItem[] {
+  const logged = new Set(
+    plan.completedSessions
+      .filter((session) => session.source === "strava")
+      .map((session) => `${session.date}:${session.actualKm?.toFixed(2) ?? ""}`),
+  );
+
+  return activities
+    .filter((activity) => !logged.has(`${activity.date}:${activity.distanceKm.toFixed(2)}`))
+    .map((activity) => ({
+      id: activity.id,
+      createdAt: activity.startedAt,
+      label: "Strava run",
+      detail: `${formatDate(activity.date)} · ${activity.distanceKm.toFixed(2)} km · ${Math.round(activity.durationMin)} min${activity.avgHR ? ` · ${activity.avgHR} bpm` : ""}`,
+      href: `/app/activities/strava/${stravaRouteId(activity)}`,
+    }));
 }
