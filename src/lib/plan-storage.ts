@@ -75,7 +75,8 @@ export type SavedPlan = {
 // Storage helpers
 // ---------------------------------------------------------------------------
 
-const plansKey = "run-tailor:plans";
+const plansKey = "pacevo:plans";
+const legacyPlansKey = "run-tailor:plans";
 
 function normalizePlan(plan: SavedPlan): SavedPlan {
   return {
@@ -84,13 +85,22 @@ function normalizePlan(plan: SavedPlan): SavedPlan {
   };
 }
 
-function readJson<T>(key: string, fallback: T): T {
+function readJson<T>(key: string, fallback: T, legacyKey?: string): T {
   if (typeof window === "undefined") return fallback;
+  const value = readJsonValue<T>(key);
+  if (value.ok) return value.value;
+  if (value.found || !legacyKey) return fallback;
+  const legacyValue = readJsonValue<T>(legacyKey);
+  return legacyValue.ok ? legacyValue.value : fallback;
+}
+
+function readJsonValue<T>(key: string): { ok: true; value: T } | { ok: false; found: boolean } {
+  const value = localStorage.getItem(key);
+  if (value === null) return { ok: false, found: false };
   try {
-    const value = localStorage.getItem(key);
-    return value ? (JSON.parse(value) as T) : fallback;
+    return { ok: true, value: JSON.parse(value) as T };
   } catch {
-    return fallback;
+    return { ok: false, found: true };
   }
 }
 
@@ -99,7 +109,7 @@ function readJson<T>(key: string, fallback: T): T {
 // ---------------------------------------------------------------------------
 
 export function getPlans(): SavedPlan[] {
-  return readJson<SavedPlan[]>(plansKey, []).map(normalizePlan);
+  return readJson<SavedPlan[]>(plansKey, [], legacyPlansKey).map(normalizePlan);
 }
 
 export function getPlan(id: string): SavedPlan | undefined {

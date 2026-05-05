@@ -5,6 +5,7 @@ import {
   createPlan,
   getCompletedSession,
   getPlan,
+  getPlans,
   getWorkoutFeedbackForSession,
   getWorkoutPreferences,
   applyWorkoutSwap,
@@ -88,6 +89,43 @@ test("logSession replaces the existing log for the same planned session", () => 
   expect(second.id).toBe(first.id);
   expect(saved?.actualKm).toBe(6);
   expect(saved?.note).toBe("updated");
+  expect(localStorage.getItem("pacevo:plans")).not.toBeNull();
+  expect(localStorage.getItem("run-tailor:plans")).toBeNull();
+});
+
+test("legacy plans load and next save writes the pacevo plans key", () => {
+  const legacyPlan = createPlan(INPUTS, buildPlan(INPUTS));
+  localStorage.setItem("run-tailor:plans", JSON.stringify([legacyPlan]));
+
+  expect(getPlans()).toHaveLength(1);
+  expect(getPlan(legacyPlan.id)?.id).toBe(legacyPlan.id);
+
+  savePlan({
+    ...legacyPlan,
+    status: "archived",
+    updatedAt: "2026-05-05T00:00:00.000Z",
+  });
+
+  const saved = JSON.parse(localStorage.getItem("pacevo:plans") ?? "[]") as Array<{ id: string; status: string }>;
+  expect(saved).toHaveLength(1);
+  expect(saved[0]).toMatchObject({ id: legacyPlan.id, status: "archived" });
+  expect(localStorage.getItem("run-tailor:plans")).not.toBeNull();
+});
+
+test("pacevo plans key is preferred over legacy plans key", () => {
+  const legacyPlan = createPlan(INPUTS, buildPlan(INPUTS));
+  const pacevoPlan = createPlan(INPUTS, buildPlan(INPUTS));
+  localStorage.setItem("run-tailor:plans", JSON.stringify([legacyPlan]));
+  localStorage.setItem("pacevo:plans", JSON.stringify([pacevoPlan]));
+
+  expect(getPlans()).toHaveLength(1);
+  expect(getPlans()[0].id).toBe(pacevoPlan.id);
+});
+
+test("corrupt legacy plans fall back safely", () => {
+  localStorage.setItem("run-tailor:plans", "{not-json");
+
+  expect(getPlans()).toEqual([]);
 });
 
 test("recordWorkoutFeedback persists event and updates derived preferences", () => {

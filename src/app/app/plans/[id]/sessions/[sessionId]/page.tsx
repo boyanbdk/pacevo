@@ -22,6 +22,7 @@ import { findSimilarWorkouts, type SimilarWorkoutOption } from "@/domain/trainin
 import type { IntensityMode, PlannedSession, TrainingWeek } from "@/domain/training-plan/types";
 import type { WorkoutFeedbackReason, WorkoutFeedbackType } from "@/domain/training-plan/workout-preferences";
 import { sessionPaceReferenceItems } from "@/lib/plan-display";
+import { BRAND_NAME } from "@/lib/brand";
 import { formatFullPlanDate, parsePlanDate } from "@/lib/plan-dates";
 import type { CompletedSession, SavedPlan } from "@/lib/plan-storage";
 import type { UserSettings } from "@/domain/workout-schema";
@@ -397,7 +398,7 @@ function FeedbackControls({
         <div>
           <h3 style={{ margin: "0 0 4px" }}>Feedback</h3>
           <p className="muted" style={{ margin: 0 }}>
-            This will bias future workout selection inside the plan guardrails.
+            {BRAND_NAME} learns from this feedback inside the plan guardrails.
           </p>
         </div>
         {latestFeedback && <span className="tag">Last: {latestFeedback.type}</span>}
@@ -406,7 +407,7 @@ function FeedbackControls({
       {!canRecord && (
         <div className="plan-warn" style={{ marginBottom: 12 }}>
           <AlertCircle size={15} />
-          <span>This older session has no recipe metadata, so feedback cannot be learned from it.</span>
+          <span>This older session has no recipe metadata, so {BRAND_NAME} cannot learn from this feedback.</span>
         </div>
       )}
 

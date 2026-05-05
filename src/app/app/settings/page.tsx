@@ -31,7 +31,7 @@ export default function SettingsPage() {
       <div className="page-header">
         <div className="page-title">
           <h1>Settings</h1>
-          <p>Defaults stay editable on every workout.</p>
+          <p>Defaults stay editable on every Pacevo workout.</p>
         </div>
       </div>
       <form className="panel stack" onSubmit={submit}>
