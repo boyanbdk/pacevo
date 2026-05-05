@@ -321,6 +321,10 @@ button {
   grid-template-columns: 244px minmax(0, 1fr);
 }
 
+.app-layout > div {
+  min-width: 0;
+}
+
 .sidebar {
   position: sticky;
   top: 0;
@@ -1438,6 +1442,7 @@ button {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.025);
+  color: var(--text);
   padding: 12px;
   cursor: pointer;
   transition: background 0.22s ease-out, border-color 0.22s ease-out;

@@ -1,6 +1,7 @@
 # Pacevo Rebrand Implementation Plan
 
 Date: 2026-05-05
+Status: Done
 
 ## Source Brand Direction
 
@@ -660,30 +661,30 @@ rg -n "Run Tailor|RUN TAILOR|run-tailor-app|Loading Run Tailor|RT" src README.md
 
 Before shipping:
 
-- [ ] Brand constants added.
-- [ ] Assets copied into `public/brand`.
-- [ ] Metadata updated.
-- [ ] App shell updated.
-- [ ] Auth updated.
-- [ ] Dashboard updated.
-- [ ] Workout generation updated.
-- [ ] Workout adaptation updated.
-- [ ] Workout card updated.
-- [ ] Workout exports updated.
-- [ ] Plans list updated.
-- [ ] Plan onboarding updated.
-- [ ] Plan detail tabs updated.
-- [ ] Plan exports updated.
-- [ ] Session feedback copy updated.
-- [ ] Settings copy updated.
-- [ ] Storage migration implemented and tested.
-- [ ] Package metadata updated.
-- [ ] README updated.
-- [ ] Skill docs updated.
-- [ ] `npm test` passes.
-- [ ] `npm run build` passes.
-- [ ] Manual route QA complete on desktop and mobile.
-- [ ] Export QA complete for PNG, PDF, and DOCX.
+- [x] Brand constants added.
+- [x] Assets copied into `public/brand`.
+- [x] Metadata updated.
+- [x] App shell updated.
+- [x] Auth updated.
+- [x] Dashboard updated.
+- [x] Workout generation updated.
+- [x] Workout adaptation updated.
+- [x] Workout card updated.
+- [x] Workout exports updated.
+- [x] Plans list updated.
+- [x] Plan onboarding updated.
+- [x] Plan detail tabs updated.
+- [x] Plan exports updated.
+- [x] Session feedback copy updated.
+- [x] Settings copy updated.
+- [x] Storage migration implemented and tested.
+- [x] Package metadata updated.
+- [x] README updated.
+- [x] Skill docs updated.
+- [x] `npm test` passes.
+- [x] `npm run build` passes.
+- [x] Manual route QA complete on desktop and mobile.
+- [x] Export QA complete for PNG, PDF, and DOCX.
 
 ## Review Notes From Gstack Planning Lenses
 
