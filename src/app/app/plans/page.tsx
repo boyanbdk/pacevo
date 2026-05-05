@@ -51,7 +51,7 @@ export default function PlansPage() {
       <div className="page-header">
         <div className="page-title">
           <h1>Training plans</h1>
-          <p>Your personalised race-prep plans.</p>
+          <p>Race builds Pacevo can adapt as you train.</p>
         </div>
         <Link className="button primary" href="/app/plans/new">
           <Plus size={18} />

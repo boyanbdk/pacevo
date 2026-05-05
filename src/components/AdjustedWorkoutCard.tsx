@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { groupAdjustedSteps } from "@/domain/run-tailor";
 import type { AdjustedStepGroup, AdjustedWorkout, DisplayStyle } from "@/domain/workout-schema";
+import { BRAND_NAME } from "@/lib/brand";
 
 export function AdjustedWorkoutCard({
   workout,
@@ -25,7 +26,7 @@ export function AdjustedWorkoutCard({
     <div className="workout-card" ref={cardRef}>
       <div className="workout-card-header">
         <div>
-          <div className="card-kicker">Run Tailor / {workout.lane}</div>
+          <div className="card-kicker">{BRAND_NAME} Adapt / {workout.lane}</div>
           <h2>{workout.title}</h2>
           <p className="muted">{workout.summary}</p>
         </div>

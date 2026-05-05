@@ -16,6 +16,7 @@ import { groupAdjustedSteps } from "../domain/run-tailor";
 import type { AdjustedWorkout, UserSettings } from "../domain/workout-schema";
 import type { AdjustedStepGroup } from "../domain/workout-schema";
 import type { PlannedSession, TrainingPlan } from "../domain/training-plan/types";
+import { BRAND_MOTTO, BRAND_NAME } from "./brand";
 import { formatPlanDate, formatWeekRange, formatWeekdayDate } from "./plan-dates";
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -87,7 +88,12 @@ export function exportWorkoutPdf(workout: AdjustedWorkout) {
   y += 28;
   pdf.setTextColor(201, 255, 64);
   pdf.setFontSize(11);
-  pdf.text(`RUN TAILOR / ${workout.lane.toUpperCase()}`, margin, y);
+  pdf.text(`${BRAND_NAME.toUpperCase()} / ${workout.lane.toUpperCase()}`, margin, y);
+  y += 15;
+  pdf.setTextColor(156, 166, 147);
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(9);
+  pdf.text(BRAND_MOTTO, margin, y);
   y += 28;
 
   pdf.setTextColor(245, 247, 242);
@@ -375,7 +381,11 @@ export async function exportWorkoutDocx(workout: AdjustedWorkout) {
             children: [new TextRun({ text: workout.title, bold: true, size: 36 })]
           }),
           new Paragraph({
-            children: [new TextRun({ text: `Run Tailor / ${workout.lane}`, bold: true })]
+            children: [new TextRun({ text: `${BRAND_NAME} / ${workout.lane}`, bold: true })]
+          }),
+          new Paragraph({
+            children: [new TextRun({ text: BRAND_MOTTO, italics: true, color: "6B7566", size: 18 })],
+            spacing: { after: 240 },
           }),
           ...workoutStepGroups(workout).map(
             (group, index) =>
