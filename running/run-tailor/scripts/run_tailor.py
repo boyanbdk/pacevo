@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tailor running workout segments into speed, pace, time, or distance targets."""
+"""Adapt running workout segments into speed, pace, time, or distance targets."""
 
 from __future__ import annotations
 

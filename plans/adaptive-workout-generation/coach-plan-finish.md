@@ -2,7 +2,7 @@
 
 ## Decision
 
-A second polish pass to close the gaps surfaced during the May 5, 2026 walkthrough. The previous polish pass (`coach-plan-polish.md`) addressed warning placement, easy-pace prescription on the plan header, date legibility, the continuous calendar surface, the minimum-weeks gate, repeated-step grouping, and plan-aware tailoring. This pass tightens the surfaces that those changes exposed: how the calendar reacts to scroll, what belongs in the primary navigation, where the plan actually ends, what we display for easy/recovery sessions on the session detail surface, and how imported activities bind to planned sessions.
+A second polish pass to close the gaps surfaced during the May 5, 2026 walkthrough. The previous polish pass (`coach-plan-polish.md`) addressed warning placement, easy-pace prescription on the plan header, date legibility, the continuous calendar surface, the minimum-weeks gate, repeated-step grouping, and plan-aware adaptation. This pass tightens the surfaces that those changes exposed: how the calendar reacts to scroll, what belongs in the primary navigation, where the plan actually ends, what we display for easy/recovery sessions on the session detail surface, and how imported activities bind to planned sessions.
 
 Each item is local. Together they decide whether the app reads as a confident coach or as a noisy generator.
 
@@ -15,7 +15,7 @@ Each item is local. Together they decide whether the app reads as a confident co
 ## Walkthrough Findings
 
 1. **Sidebar reacts too fast to scroll.** The IntersectionObserver in `src/app/app/plans/[id]/page.tsx` (~line 827) flips the active sidebar week the instant the next week crosses the threshold. The active-state change drives a visible color/border/glow swap — at scroll speed it strobes between weeks and is unpleasant.
-2. **Settings lives in the primary nav.** `src/components/AppShell.tsx:16` puts Settings as a top-level sidebar item alongside Dashboard, New workout, Tailor, and Training plans. Settings is configuration, not a place a runner goes during a session — it doesn't belong in the day-to-day navigation.
+2. **Settings lives in the primary nav.** `src/components/AppShell.tsx:16` puts Settings as a top-level sidebar item alongside Dashboard, New workout, Adapt workout, and Training plans. Settings is configuration, not a place a runner goes during a session — it doesn't belong in the day-to-day navigation.
 3. **Plan ends one week before the goal date.** A plan generated with `goal_date = 2026-08-09` (a Sunday) renders weeks 1–13 ending Aug 2, with no week 14 and no race-day session on Aug 9. `weeksTotal = Math.ceil((goalDateObj - today) / msPerWeek)` in `src/domain/training-plan/build-plan.ts:668` is computed from the raw `today` rather than from week 1's aligned Monday, so it can come up one short. There is also no race-day session inserted on `goal_date`.
 4. **Structure card prescribes easy pace.** Session detail still shows `5.6 km at easy pace (5:17–6:18 /km)` on a Monday Easy run, even though `defaultEasyPace` in Settings is the user's input and `showEasyRunPaceTargets` defaults off. The Structure copy comes from `session.main_set` somewhere that still injects pace metadata for easy/recovery sessions. For these sessions the Structure card should display RPE and HR-zone guidance only.
 5. **Imported activities can't be relinked.** `matchImportedActivities` in `src/domain/training-plan/activity-import.ts:202` chooses the best-scoring planned session by date+distance and writes it to a completed entry. If the user disagrees (it picked the wrong one, or attached an activity to a planned session that wasn't actually that run), there is no UI to change the link or detach.
@@ -23,7 +23,7 @@ Each item is local. Together they decide whether the app reads as a confident co
 ## Non-Negotiable Rules
 
 - The active sidebar week must change in a way that doesn't strobe under fast scroll. One change per scroll-stop, not one change per week boundary crossed.
-- The primary nav holds running surfaces only (Dashboard, New, Tailor, Plans). Settings moves out of that nav.
+- The primary nav holds running surfaces only (Dashboard, New workout, Adapt workout, Plans). Settings moves out of that nav.
 - A plan generated for goal date D contains a week that includes D, and inserts a race-day session on D.
 - The Structure card on Easy/Recovery sessions does not show pace targets. RPE and HR zones only, with the user's Settings pace optionally surfaced as "your easy pace setting" — never as a derived prescription.
 - Every imported activity's link to a planned session is editable: the user can re-link to a different session or detach entirely, including after the activity was imported as completed.

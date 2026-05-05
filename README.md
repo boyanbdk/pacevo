@@ -1,10 +1,16 @@
-# workout
+# Pacevo
 
-Tools to optimise and adapt running workouts.
+Adaptive running plans, workout tailoring, and feedback-led learning.
 
-## Run Tailor Web App
+## Pacevo Web App
 
-A local Next.js app for tailoring individual workouts and building multi-week training plans.
+A local Next.js app for building race plans, adapting individual workouts, and learning from session feedback.
+
+## Brand
+
+Motto: **Plan. Adapt. Learn.**
+
+Brand constants live in `src/lib/brand.ts`; raster assets live in `public/brand/`.
 
 ### Running locally
 
@@ -60,14 +66,14 @@ Current limitation: plans are still stored locally in the browser, so the webhoo
 - See 3–10 candidate sessions generated from the recipe library — warmup, main set, and cool-down for each.
 - Save any candidate to your workout history.
 
-#### Workout tailoring (`/app/tailoring`)
+#### Workout adaptation (`/app/tailoring`)
 
-- Paste a workout or upload a screenshot, then review the extracted structure.
-- Set tailoring inputs: run context (free run or treadmill), output format, easy pace, recovery pace, walking rest pace, feeling (1–10), and push level (easy / normal / hard).
-- Generate an adjusted workout with correct speeds and paces for each step.
+- Paste a workout, upload a screenshot, or pick a planned session, then review the extracted structure.
+- Set adaptation inputs: run context (free run or treadmill), output format, easy pace, recovery pace, walking rest pace, feeling (1–10), and push level (easy / normal / hard).
+- Generate an adapted workout with correct speeds and paces for each step.
 - Satisfaction loop: describe what to change and regenerate.
-- Save tailored workouts and view revision history.
-- Export the adjusted workout card as PNG, PDF, or DOCX.
+- Save adapted workouts and view revision history.
+- Export the adapted workout card as PNG, PDF, or DOCX.
 - Four built-in demo workouts to try immediately: 800 m intervals, tempo 3 km, 400 m repeats, and a block long run.
 
 #### Training plan generator
@@ -101,7 +107,7 @@ Current limitation: plans are still stored locally in the browser, so the webhoo
 | `/login` `/register` | Local auth |
 | `/app` | Dashboard — active plan, next run, weekly progress, recent activity |
 | `/app/new` | One-off workout chooser — pick type, duration, and level; preview recipe-based candidates and save |
-| `/app/tailoring` | Tailor a pasted or uploaded workout for how you feel today |
+| `/app/tailoring` | Adapt a pasted, uploaded, or planned workout for how you feel today |
 | `/app/workouts/[id]` | Saved workout detail, regenerate, export |
 | `/app/plans` | All training plans |
 | `/app/plans/new` | Plan onboarding form |
@@ -113,7 +119,7 @@ Current limitation: plans are still stored locally in the browser, so the webhoo
 
 ## Running skill
 
-`running/run-tailor/` contains the original Claude skill for tailoring workouts from screenshots or text. The web app is built on top of the same algorithm, ported to TypeScript in `src/domain/`.
+`running/run-tailor/` contains the legacy Pacevo Adapt skill origin for adapting workouts from screenshots or text. The web app is built on top of the same algorithm, ported to TypeScript in `src/domain/`. The folder name is retained for compatibility until the optional internal adapter refactor.
 
 ## Training plan generator skill
 

@@ -18,14 +18,14 @@ This plan merges three sources:
   - plan view lacks visible dates
   - mileage progression starts too high and peaks too low later
   - user-facing source/citation messages are not helpful
-  - `New workout` and workout tailoring are mixed together
+  - `New workout` and workout adaptation are mixed together
   - easy runs should default to HR/RPE guidance, not pace pressure
   - race estimate input should use structured time controls
   - race estimate distance should be independent from goal race
 
 ## Product Position
 
-Run Tailor should feel like a coach, not like an academic plan generator.
+Pacevo should feel like a coach, not like an academic plan generator.
 
 The user should be able to answer three questions quickly:
 
@@ -67,7 +67,7 @@ Fix or replace these areas:
 - Dates must be visible anywhere the user chooses or inspects workouts.
 - Research sources can live in code/tests/docs, but not in primary user messages.
 - Easy and recovery runs default to HR/RPE guidance. Pace is optional reference.
-- One-off workout generation and planned-workout tailoring are separate product flows.
+- One-off workout generation and planned-workout adaptation are separate product flows.
 
 ## Research Baseline For Mileage
 
@@ -245,7 +245,7 @@ Verification added:
 
 - `src/lib/storage.test.ts` covers HR default settings, the easy/recovery pace-target toggle, and legacy `defaultCooldownPace` loading.
 - `src/domain/training-plan/training-intensity.test.ts` covers easy-run pace suppression, explicit pace opt-in, and hard-session pace reference behavior.
-- `src/domain/run-tailor.test.ts` covers Recovery labeling for tailored workouts and parsed recovery distance.
+- `src/domain/run-tailor.test.ts` covers Recovery labeling for adapted workouts and parsed recovery distance.
 - `npm test` and `npm run build` passed after implementation.
 
 ### Phase 5: Race Estimate Input Rebuild
@@ -280,7 +280,7 @@ Likely files:
 - `src/domain/training-plan/build-plan.test.ts`
 - `src/app/app/plans/new/page.tsx`
 
-### Phase 6: Split New Workout From Tailoring
+### Phase 6: Split New Workout From Adaptation
 
 Status: implemented on May 4, 2026.
 
@@ -288,8 +288,8 @@ Goal: separate choosing a one-off workout from adapting an already planned worko
 
 Tasks:
 
-1. Move current paste/upload adjustment flow into a dedicated Tailoring route.
-2. Add navigation entry for Tailoring.
+1. Move current paste/upload adjustment flow into a dedicated adaptation route.
+2. Add navigation entry for Adapt workout.
 3. Rebuild `/app/new` as one-off workout creation:
    - choose type: recovery, easy, tempo, interval, long run
    - choose target by time or distance
@@ -297,13 +297,13 @@ Tasks:
    - show 3-10 safe candidate workouts
    - allow save
 4. Reuse `WORKOUT_RECIPES` instead of demo workout buttons.
-5. Keep screenshot/paste parsing only in Tailoring.
+5. Keep screenshot/paste parsing only in the adaptation flow.
 
 Acceptance criteria:
 
 - `/app/new` no longer shows the four demo workouts as primary choices.
 - User can generate multiple candidate workouts by type and duration/distance.
-- Tailoring clearly means "adjust today's planned or pasted workout up/down."
+- Adapt workout clearly means "adjust today's planned or pasted workout up/down."
 - Saved one-off workouts still work with existing history/export screens.
 
 Likely files:
@@ -334,7 +334,7 @@ Tasks:
    - race estimate controls
    - easy HR/RPE default
    - new workout chooser
-   - tailoring route
+   - adaptation route
 4. Update README route descriptions.
 5. Run `npm test` and `npm run build`.
 
@@ -347,7 +347,7 @@ Acceptance criteria:
 Verification added:
 
 - `src/domain/training-plan/build-plan.test.ts` adds a 12-cell low/moderate/high × 5K/10K/half/marathon golden matrix. Each cell asserts week-one respects the runner's recent baseline, peak occurs before taper, the final taper week is at most 70% of the actual pre-taper peak, taper is monotonically non-increasing, and deload weeks dip below the prior week.
-- README route table and feature sections updated to describe the split between `/app/new` (recipe-based one-off chooser) and `/app/tailoring` (paste/screenshot adjustment).
+- README route table and feature sections updated to describe the split between `/app/new` (recipe-based one-off chooser) and `/app/tailoring` (paste/screenshot adaptation).
 - `npm test` (228 tests) and `npm run build` passed after implementation.
 
 Manual QA checklist (run before shipping):
@@ -357,8 +357,8 @@ Manual QA checklist (run before shipping):
 3. New plan onboarding: easy/recovery sessions on the resulting plan default to HR or RPE display; pace appears only when the user has explicitly opted in via Settings.
 4. Settings screen shows "Recovery pace" (not "Cool-down pace"); previously-saved settings still load.
 5. `/app/new` shows the type/duration/level chooser, renders 3–10 recipe candidates, and saving one navigates to its workout detail.
-6. `/app/tailoring` renders the paste/upload flow, generates an adjusted workout, and saves successfully.
-7. Sidebar contains both "New workout" and "Tailor workout" entries.
+6. `/app/tailoring` renders the paste/upload flow, generates an adapted workout, and saves successfully.
+7. Sidebar contains both "New workout" and "Adapt workout" entries.
 8. No user-facing string in plan warnings, session rationales, or recipe descriptions contains `Source:` or named training citations.
 
 ## File-Level Priority Map
@@ -395,7 +395,7 @@ Docs:
 3. Phase 3: User-Facing Copy Cleanup
 4. Phase 4: Intensity Defaults And Recovery Naming
 5. Phase 5: Race Estimate Input Rebuild
-6. Phase 6: Split New Workout From Tailoring
+6. Phase 6: Split New Workout From Adaptation
 7. Phase 7: QA, Docs, And Regression Coverage
 
 Start future implementation work with:
@@ -408,7 +408,7 @@ CEO/product review:
 
 - A delayed `.v2` sequel is the wrong product move because the mileage issue undermines trust now.
 - Calendar dates and copy cleanup are not cosmetic; they change whether the plan feels usable.
-- Splitting New Workout and Tailoring is necessary information architecture, not a preference.
+- Splitting New Workout and Adapt workout is necessary information architecture, not a preference.
 
 Design review:
 

@@ -10,7 +10,7 @@ Reason: the current app already implements much of this plan, while newer core i
 
 ## Purpose
 
-Move Run Tailor from a plan builder that mostly assembles fixed workout descriptions into a real workout-generation engine.
+Historical Run Tailor goal: move the app from a plan builder that mostly assembles fixed workout descriptions into a real workout-generation engine.
 
 The product goal is:
 

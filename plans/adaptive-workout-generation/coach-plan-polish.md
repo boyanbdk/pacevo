@@ -2,14 +2,14 @@
 
 ## Decision
 
-Continue the corrected coach plan with a focused polish pass that closes the gaps surfaced during the May 4, 2026 walkthrough. The previous rebuild fixed the mileage engine, dates, copy, intensity defaults, race estimates, and information architecture. This pass tightens the surfaces around them: where warnings appear, what paces the app prescribes, how the user navigates a plan, how short-runway plans are handled, how tailored workouts are read, and how planned workouts feed the tailoring engine.
+Continue the corrected coach plan with a focused polish pass that closes the gaps surfaced during the May 4, 2026 walkthrough. The previous rebuild fixed the mileage engine, dates, copy, intensity defaults, race estimates, and information architecture. This pass tightens the surfaces around them: where warnings appear, what paces the app prescribes, how the user navigates a plan, how short-runway plans are handled, how adapted workouts are read, and how planned workouts feed the adaptation engine.
 
 This is not a rewrite. Each item is local — most live in one or two files — but together they decide whether the app feels like a coach or like a rigid generator.
 
 ## Inputs
 
-- Walkthrough screenshots from May 4, 2026 covering plan view, mobile week list, plan header, and an 18-step tailored intervals card.
-- User feedback captured the same day on pace pressure, plan-length flexibility, step density, and tailoring entry points.
+- Walkthrough screenshots from May 4, 2026 covering plan view, mobile week list, plan header, and an 18-step adapted intervals card.
+- User feedback captured the same day on pace pressure, plan-length flexibility, step density, and adaptation entry points.
 - Current canonical plan: `plans/adaptive-workout-generation/coach-plan-rebuild.md` (Phases 1–7 implemented).
 
 ## Walkthrough Findings
@@ -19,8 +19,8 @@ This is not a rewrite. Each item is local — most live in one or two files — 
 3. Mobile week list dates are too dim; date strings are the most important wayfinding text on that surface and they should be the most legible.
 4. Plan navigation is week-by-week with arrows; there is no continuous calendar surface for browsing the whole plan.
 5. Plan onboarding hard-blocks a goal date inside `MIN_WEEKS`; a runner who decides 2 weeks out cannot generate a plan at all.
-6. Tailored intervals card expands every rep + recovery into its own row (18 steps for 8×800m), drowning the structural pattern.
-7. Tailoring requires manual paste/upload even when the workout the user wants to tailor is already in their plan.
+6. Adapted intervals card expands every rep + recovery into its own row (18 steps for 8×800m), drowning the structural pattern.
+7. Workout adaptation requires manual paste/upload even when the workout the user wants to adapt is already in their plan.
 
 ## Non-Negotiable Rules
 
@@ -28,7 +28,7 @@ This is not a rewrite. Each item is local — most live in one or two files — 
 - A plan must generate for any future goal date. Short runways are coached with a warning, not refused.
 - Week-scoped warnings render on their week, not on the active week.
 - Repeating workout patterns collapse to "Repeat Nx" by default; full step-by-step is recoverable but not the visual default.
-- Tailoring must be reachable from the plan without copy-paste.
+- Workout adaptation must be reachable from the plan without copy-paste.
 - Date strings must read at first glance on every plan surface.
 
 ## Execution Phases
@@ -150,7 +150,7 @@ Likely files:
 - `src/domain/training-plan/build-plan.ts`
 - `src/domain/training-plan/build-plan.test.ts`
 
-### Phase 6: Collapse Repeated Steps In Tailored Workouts
+### Phase 6: Collapse Repeated Steps In Adapted Workouts
 
 Goal: render "8x [800 m, 90 s walk]" as one repeat block, not 16 rows.
 
@@ -174,21 +174,21 @@ Likely files:
 - `src/components/AdjustedWorkoutCard.tsx`
 - `src/lib/export.ts`
 
-### Phase 7: Plan-Aware Tailoring Entry
+### Phase 7: Plan-Aware Adaptation Entry
 
-Goal: pick a planned workout to tailor without copy-pasting.
+Goal: pick a planned workout to adapt without copy-pasting.
 
 Tasks:
 
 1. In `src/app/app/tailoring/page.tsx`, add a primary "Pick from your plan" picker that lists upcoming sessions from the active plan (today first, then the next 7 days).
-2. When a planned session is selected, hydrate the tailoring `parsedWorkout` from the recipe's warmup / main set / cooldown structure. The user proceeds through the same readiness/feeling/push controls.
-3. Save the tailored result back as a revision linked to the planned session id; the plan's session detail view should surface today's tailored variant.
+2. When a planned session is selected, hydrate the adaptation `parsedWorkout` from the recipe's warmup / main set / cooldown structure. The user proceeds through the same readiness/feeling/push controls.
+3. Save the adapted result back as a revision linked to the planned session id; the plan's session detail view should surface today's adapted variant.
 4. Keep paste/upload available as an alternative path under the picker, not above it.
 
 Acceptance criteria:
 
-- An active plan owner can tailor today's session in two clicks (open Tailoring → pick today).
-- Saved tailored output appears on the planned session detail page as the latest revision.
+- An active plan owner can adapt today's session in two clicks (open Adapt workout → pick today).
+- Saved adapted output appears on the planned session detail page as the latest revision.
 - Paste/upload still works for ad-hoc workouts.
 
 Likely files:
@@ -215,15 +215,15 @@ Tasks:
    - Plan header shows no "/km easy" string by default.
    - Continuous calendar scrolls; today's week auto-focuses.
    - 14-day marathon plan generates with a short-runway warning.
-   - 8×800m tailored card collapses to a "Repeat 8x" block.
-   - Tailoring lists today's planned session as the first option.
+   - 8×800m adapted card collapses to a "Repeat 8x" block.
+   - Adapt workout lists today's planned session as the first option.
 
 Likely files:
 
 - `src/domain/training-plan/build-plan.test.ts`
 - `src/domain/run-tailor.test.ts`
 - `src/app/app/plans/[id]/page.tsx` (snapshot-style assertions if added)
-- `README.md` (refresh route descriptions if Tailoring picker changes the IA)
+- `README.md` (refresh route descriptions if the adaptation picker changes the IA)
 
 ## File-Level Priority Map
 
@@ -254,9 +254,9 @@ Docs:
 2. Phase 1 (week-scoped warnings) — removes a visible UX bug.
 3. Phase 3 (date legibility) — small CSS pass; pairs naturally with Phase 4.
 4. Phase 5 (remove min-weeks gate) — unlocks short-runway users.
-5. Phase 6 (collapse repeated steps) — biggest improvement to tailored card readability.
+5. Phase 6 (collapse repeated steps) — biggest improvement to adapted card readability.
 6. Phase 4 (continuous calendar) — larger UI change; benefits from earlier phases settling first.
-7. Phase 7 (plan-aware tailoring) — depends on Phase 6 grouping for the saved revision view.
+7. Phase 7 (plan-aware adaptation) — depends on Phase 6 grouping for the saved revision view.
 8. Phase 8 (QA) — final.
 
 Start work with:
@@ -269,7 +269,7 @@ CEO/product review:
 
 - Easy-pace prescription contradicts the product position. Removing it is non-negotiable, not a polish item.
 - "We generate any plan you ask for" is a real differentiator vs. Runna. The minimum-weeks gate gives that away for no reason.
-- Plan-aware tailoring is the bridge that makes the plan and the tailoring engine feel like one product.
+- Plan-aware adaptation is the bridge that makes the plan and the adaptation engine feel like one product.
 
 Design review:
 

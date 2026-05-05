@@ -8,8 +8,8 @@ marathon in October", "generate a 16-week marathon plan", "I'm training for a
 5K", "make me a plan to run my first 10K". Also triggers when the user provides
 their current weekly mileage, a goal race, and a goal date.
 
-Do NOT use for single-workout tailoring — that is handled by the `run-tailor`
-skill.
+Do NOT use for single-workout adaptation — that is handled by the legacy
+`run-tailor` / Pacevo Adapt skill.
 
 ## Contract
 

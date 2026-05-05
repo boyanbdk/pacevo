@@ -1,9 +1,11 @@
 ---
 name: run-tailor
-description: Tailor running workouts from screenshots or text using the user's current readiness, desired effort, warm-up/cooldown paces, rest pace, and preferred output format. Use when the user provides intervals, tempo runs, threshold runs, marathon or long-run blocks, distances in km/m, paces in min/km, walking rests, or asks to adapt a run for treadmill or general execution. Always ask for output mode, easy/cooldown pace, rest walking pace when rests exist, current feeling from 1-10, and desired push level before finalizing.
+description: Adapt running workouts from screenshots or text using the user's current readiness, desired effort, warm-up/cooldown paces, rest pace, and preferred output format. Use when the user provides intervals, tempo runs, threshold runs, marathon or long-run blocks, distances in km/m, paces in min/km, walking rests, or asks to adapt a run for treadmill or general execution. Always ask for output mode, easy/cooldown pace, rest walking pace when rests exist, current feeling from 1-10, and desired push level before finalizing.
 ---
 
-# Run Tailor
+# Pacevo Adapt
+
+This folder is the legacy `run-tailor` skill origin. Keep the folder and skill name stable until the internal adapter refactor is planned and tested.
 
 ## Purpose
 
@@ -18,7 +20,7 @@ Always display run intensity as both speed and pace: `12.0 km/h (5:00/km)`.
 
 ## Required Questions
 
-Before converting or tailoring any new workout, ask these questions unless the user already provided the answers in the same request:
+Before converting or adapting any new workout, ask these questions unless the user already provided the answers in the same request:
 
 1. Should the output be treadmill time-based, treadmill distance-based, or a general running plan?
 2. What are your easy/warm-up pace and cool-down pace?
@@ -125,7 +127,7 @@ Do not round to the nearest 10; always round upward.
 
 ## Script
 
-Use `scripts/run_tailor.py` for deterministic pace, speed, duration, and interval calculations.
+Use `scripts/run_tailor.py` for deterministic pace, speed, duration, and interval calculations. The script name is legacy and will be renamed in a later internal refactor.
 
 Examples:
 
