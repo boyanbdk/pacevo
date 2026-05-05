@@ -1,7 +1,7 @@
 # Pacevo Auth Onboarding Flow Plan
 
 Date: 2026-05-05
-Status: Proposed
+Status: Implemented
 
 ## Goal
 
@@ -435,3 +435,28 @@ Deferred decisions:
 | Implementation Design Review | `/design-review` | Implemented auth UI and verification gaps | 1 | DONE_WITH_CONCERNS | Added Phase 6 closure pass for missing segmented mode, stable auth codes, session redirect, mobile density, and lint command repair |
 | DX Review | `/plan-devex-review` | Developer experience | 0 | NO REVIEWS YET | Not run for this auth-flow plan |
 | Final Review | `/review` | Diff safety | 0 | NO REVIEWS YET | Run after implementation diff exists |
+
+## Phase 6 Closure
+
+Closure date: 2026-05-05
+Status: IMPLEMENTED
+
+Implemented updates:
+
+- `AuthForm` now uses one shared auth surface with an in-panel `Log in` / `Create account` segmented switch.
+- Mode switching preserves the email, clears the password, and updates the visible route to `/login` or `/register`.
+- Auth APIs now return stable error codes for missing credentials, invalid credentials, existing accounts, missing accounts, and server failures.
+- The client maps auth error codes to user-facing copy and exposes one-click recovery actions for wrong-path account states.
+- Auth entry pages call `currentUser()` on mount and redirect active sessions to `/app` with `Continuing to Pacevo...`.
+- The signed-out `/api/auth/me` check returns `{ user: null }` without a 401 console error.
+- Mobile auth density is tightened so the form and submit action fit cleanly in a 375px viewport.
+- `npm run lint` and `npm run typecheck` now use `tsc --noEmit`, replacing the removed `next lint` command.
+
+Verification:
+
+- `npm test` passed: 18 test files, 275 tests.
+- `npm run lint` passed.
+- `npm run typecheck` passed.
+- `npm run build` passed.
+- Browser QA passed at `http://localhost:3001/login` and `/register` for desktop and 375px mobile.
+- Browser QA confirmed unknown-email login recovery and existing-email registration recovery.

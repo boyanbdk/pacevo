@@ -14,6 +14,23 @@ import {
 const SESSION_COOKIE = "run_tailor_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+export type AuthErrorCode =
+  | "missing_credentials"
+  | "invalid_credentials"
+  | "account_exists"
+  | "account_not_found"
+  | "server_error";
+
+export class AuthError extends Error {
+  code: AuthErrorCode;
+
+  constructor(code: AuthErrorCode, message: string) {
+    super(message);
+    this.name = "AuthError";
+    this.code = code;
+  }
+}
+
 function hashSessionToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
@@ -56,12 +73,12 @@ async function setSessionCookie(userId: string): Promise<void> {
 
 export async function registerWithPassword(email: string, password: string) {
   if (password.length < 8) {
-    throw new Error("Password must be at least 8 characters.");
+    throw new AuthError("invalid_credentials", "Password must be at least 8 characters.");
   }
 
   const existing = await getUserByEmail(email);
   if (existing?.password_hash) {
-    throw new Error("An account with this email already exists.");
+    throw new AuthError("account_exists", "That email already has a Pacevo account.");
   }
 
   const user = existing ?? await findOrCreateUserByEmail(email);
@@ -74,10 +91,10 @@ export async function registerWithPassword(email: string, password: string) {
 export async function loginWithPassword(email: string, password: string) {
   const user = await getUserByEmail(email);
   if (!user?.password_hash || !user.password_salt) {
-    throw new Error("No account exists for that email.");
+    throw new AuthError("account_not_found", "No Pacevo account exists for that email.");
   }
   if (!verifyPassword(password, user.password_salt, user.password_hash)) {
-    throw new Error("Incorrect email or password.");
+    throw new AuthError("invalid_credentials", "Incorrect email or password.");
   }
 
   await setSessionCookie(user.id);
@@ -104,4 +121,3 @@ export async function logoutCurrentSession(): Promise<void> {
   }
   cookieStore.delete(SESSION_COOKIE);
 }
-

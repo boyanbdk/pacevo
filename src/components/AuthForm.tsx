@@ -1,33 +1,109 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BRAND_ASSETS, BRAND_MOTTO, BRAND_NAME } from "@/lib/brand";
-import { submitAuth } from "@/lib/auth-client";
+import {
+  AuthClientError,
+  currentUser,
+  recoveryModeForAuthError,
+  submitAuth,
+  type AuthErrorCode,
+} from "@/lib/auth-client";
 
-export function AuthForm({ mode }: { mode: "login" | "register" }) {
+type AuthMode = "login" | "register";
+
+type AuthFailure = {
+  code: AuthErrorCode;
+  message: string;
+};
+
+const AUTH_COPY: Record<AuthMode, { heading: string; body: string; submit: string; pending: string }> = {
+  login: {
+    heading: "Welcome back",
+    body: "Log in to continue your training workspace.",
+    submit: "Log in",
+    pending: "Logging in...",
+  },
+  register: {
+    heading: "Create your Pacevo account",
+    body: "Start with a private training workspace for plans, adaptations, and session feedback.",
+    submit: "Create account",
+    pending: "Creating account...",
+  },
+};
+
+export function AuthForm({ mode }: { mode: AuthMode }) {
   const router = useRouter();
+  const emailId = useId();
+  const passwordId = useId();
+  const [activeMode, setActiveMode] = useState<AuthMode>(mode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<AuthFailure | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const isRegister = mode === "register";
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [redirecting, setRedirecting] = useState(false);
+  const isRegister = activeMode === "register";
+  const copy = AUTH_COPY[activeMode];
+
+  useEffect(() => {
+    setActiveMode(mode);
+    setPassword("");
+    setFailure(null);
+  }, [mode]);
+
+  useEffect(() => {
+    let active = true;
+
+    currentUser()
+      .then((user) => {
+        if (!active) return;
+        if (user) {
+          setRedirecting(true);
+          router.replace("/app");
+          return;
+        }
+        setCheckingSession(false);
+      })
+      .catch(() => {
+        if (active) setCheckingSession(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [router]);
+
+  function switchMode(nextMode: AuthMode) {
+    if (nextMode === activeMode) return;
+    setActiveMode(nextMode);
+    setPassword("");
+    setFailure(null);
+    window.history.replaceState(window.history.state, "", nextMode === "login" ? "/login" : "/register");
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!email || !password) return;
-    setError(null);
+    setFailure(null);
     setSubmitting(true);
     try {
-      await submitAuth(mode, email, password);
+      await submitAuth(activeMode, email, password);
       router.push("/app");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Authentication failed.");
+      if (err instanceof AuthClientError) {
+        setFailure({ code: err.code, message: err.message });
+      } else {
+        setFailure({ code: "server_error", message: "Pacevo could not connect. Try again." });
+      }
     } finally {
       setSubmitting(false);
     }
   }
+
+  const recoveryMode = failure ? recoveryModeForAuthError(failure.code) : null;
 
   return (
     <div className="auth-page">
@@ -57,26 +133,84 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           </div>
         </section>
         <form className="form-panel form-grid" onSubmit={submit}>
-          <div>
-            <h2>{isRegister ? "Create account" : "Log in"}</h2>
-            <p className="muted">Your account is checked against the app database.</p>
-          </div>
-          <div className="field">
-            <label htmlFor="email">Email</label>
-            <input className="input" id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
-          </div>
-          <div className="field">
-            <label htmlFor="password">Password</label>
-            <input className="input" id="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
-          </div>
-          {error && <div className="plan-warn">{error}</div>}
-          <button className="button primary" type="submit" disabled={submitting}>
-            {isRegister ? "Create account" : "Log in"}
-          </button>
-          <p className="muted">
-            {isRegister ? "Already have a local account? " : "New here? "}
-            <Link href={isRegister ? "/login" : "/register"}>{isRegister ? "Log in" : "Register"}</Link>
-          </p>
+          {checkingSession || redirecting ? (
+            <div className="auth-redirect-state" aria-live="polite">
+              <span className="card-kicker">{BRAND_MOTTO}</span>
+              <h2>Continuing to {BRAND_NAME}...</h2>
+            </div>
+          ) : (
+            <>
+              <div className="auth-mode-switch" role="group" aria-label="Choose account action">
+                <button
+                  type="button"
+                  className={activeMode === "login" ? "selected" : ""}
+                  aria-pressed={activeMode === "login"}
+                  onClick={() => switchMode("login")}
+                >
+                  Log in
+                </button>
+                <button
+                  type="button"
+                  className={activeMode === "register" ? "selected" : ""}
+                  aria-pressed={activeMode === "register"}
+                  onClick={() => switchMode("register")}
+                >
+                  Create account
+                </button>
+              </div>
+              <div>
+                <h2>{copy.heading}</h2>
+                <p className="muted">{copy.body}</p>
+              </div>
+              <div className="field">
+                <label htmlFor={emailId}>Email</label>
+                <input
+                  className="input"
+                  id={emailId}
+                  type="email"
+                  value={email}
+                  autoComplete="email"
+                  required
+                  autoFocus
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor={passwordId}>Password</label>
+                <input
+                  className="input"
+                  id={passwordId}
+                  type="password"
+                  value={password}
+                  autoComplete={isRegister ? "new-password" : "current-password"}
+                  required
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+              </div>
+              {failure && (
+                <div className="auth-error plan-warn" aria-live="polite">
+                  <span>{failure.message}</span>
+                  {recoveryMode && (
+                    <button className="auth-error-action" type="button" onClick={() => switchMode(recoveryMode)}>
+                      {recoveryMode === "login" ? "Log in with this email" : "Create account with this email"}
+                    </button>
+                  )}
+                </div>
+              )}
+              <button className="button primary" type="submit" disabled={submitting}>
+                {submitting ? copy.pending : copy.submit}
+              </button>
+              <p className="muted auth-mode-fallback">
+                {isRegister ? "Already have a Pacevo account? " : "New to Pacevo? "}
+                <Link href={isRegister ? "/login" : "/register"} onClick={(event) => {
+                  event.preventDefault();
+                  switchMode(isRegister ? "login" : "register");
+                }}>
+                  {isRegister ? "Log in" : "Create account"}
+                </Link>
+              </p>
+            </>
+          )}
         </form>
       </div>
     </div>

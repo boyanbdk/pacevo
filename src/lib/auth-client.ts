@@ -1,14 +1,54 @@
 import { clearUser, saveUser, type LocalUser } from "./storage";
 
+export type AuthErrorCode =
+  | "missing_credentials"
+  | "invalid_credentials"
+  | "account_exists"
+  | "account_not_found"
+  | "server_error";
+
 type AuthResponse = {
   user?: LocalUser | null;
   error?: string;
+  code?: AuthErrorCode;
 };
+
+export class AuthClientError extends Error {
+  code: AuthErrorCode;
+
+  constructor(code: AuthErrorCode, message: string) {
+    super(message);
+    this.name = "AuthClientError";
+    this.code = code;
+  }
+}
+
+export function authErrorMessage(code: AuthErrorCode, fallback?: string): string {
+  switch (code) {
+    case "missing_credentials":
+      return "Enter your email and password to continue.";
+    case "account_exists":
+      return "That email already has a Pacevo account. Log in instead.";
+    case "account_not_found":
+      return "No Pacevo account exists for that email. Create one instead.";
+    case "invalid_credentials":
+      return fallback ?? "Incorrect email or password.";
+    case "server_error":
+      return "Pacevo could not connect. Try again.";
+  }
+}
+
+export function recoveryModeForAuthError(code: AuthErrorCode): "login" | "register" | null {
+  if (code === "account_exists") return "login";
+  if (code === "account_not_found") return "register";
+  return null;
+}
 
 async function parseAuthResponse(response: Response): Promise<AuthResponse> {
   const body = await response.json() as AuthResponse;
   if (!response.ok) {
-    throw new Error(body.error ?? "Authentication failed.");
+    const code = body.code ?? "server_error";
+    throw new AuthClientError(code, authErrorMessage(code, body.error));
   }
   return body;
 }
@@ -44,4 +84,3 @@ export async function signOut(): Promise<void> {
   await fetch("/api/auth/logout", { method: "POST" });
   clearUser();
 }
-
