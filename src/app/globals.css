@@ -1025,6 +1025,23 @@ button {
   margin: 0 auto;
 }
 
+.plan-onboard-title {
+  margin-bottom: 18px;
+}
+
+.plan-onboard-title h1 {
+  margin: 0 0 6px;
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.plan-onboard-title p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 .plan-onboard-header {
   display: flex;
   align-items: center;

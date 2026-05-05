@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { buildPlan } from "@/domain/training-plan/build-plan";
 import type { DifficultyPref, GoalRace, IntensityMode, Level, PlanInputs, Surface, TrainingFocus, VolumePref } from "@/domain/training-plan/types";
+import { BRAND_NAME } from "@/lib/brand";
 import { createPlan, savePlan } from "@/lib/plan-storage";
 import { getSettings } from "@/lib/storage";
 
@@ -314,7 +315,7 @@ function Step3({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void 
             onClick={() => set({ performanceMode: "none" })}
           >
             <strong>I don&apos;t know</strong>
-            <span>We&apos;ll estimate from training volume</span>
+            <span>{BRAND_NAME} will estimate from training volume</span>
           </button>
         </div>
       </div>
@@ -363,7 +364,7 @@ function Step3({ s, set }: { s: FormState; set: (p: Partial<FormState>) => void 
               ))}
             </div>
             <span className="field-hint">
-              Pick any distance — we&apos;ll convert to your goal pace using Riegel.
+              Pick any distance — {BRAND_NAME} will convert it to your goal pace using Riegel.
             </span>
           </div>
           <TimeInputs
@@ -398,7 +399,7 @@ function Step4Preferences({ s, set }: { s: FormState; set: (p: Partial<FormState
           ))}
         </div>
         <span className="field-hint">
-          We&apos;ll verify this against your training data and use the safer estimate.
+          {BRAND_NAME} will verify this against your training data and use the safer estimate.
         </span>
       </div>
       <div className="field">
@@ -579,7 +580,7 @@ function Step6Health({ s, set }: { s: FormState; set: (p: Partial<FormState>) =>
           <input
             type="number"
             className="input"
-            placeholder="bpm — we&apos;ll estimate if blank"
+            placeholder="bpm — estimated if blank"
             min="100"
             max="230"
             value={s.maxHR}
@@ -597,7 +598,7 @@ function Step6Health({ s, set }: { s: FormState; set: (p: Partial<FormState>) =>
           onChange={(e) => set({ injuryFlags: e.target.value })}
         />
         <span className="field-hint">
-          We&apos;ll insert rest or cross-training where relevant. This does not replace medical advice.
+          {BRAND_NAME} will insert rest or cross-training where relevant. This does not replace medical advice.
         </span>
       </div>
     </div>
@@ -714,6 +715,11 @@ export default function NewPlanPage() {
 
   return (
     <div className="plan-onboard-shell">
+      <div className="plan-onboard-title">
+        <h1>Build your plan</h1>
+        <p>{BRAND_NAME} uses your goal, training load, and preferences to build a race plan it can adapt as you train.</p>
+      </div>
+
       {/* Progress header */}
       <div className="plan-onboard-header">
         <button
