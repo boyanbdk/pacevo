@@ -584,10 +584,23 @@ export default function SessionDetailPage() {
       {session.type !== "rest" && (
         <div style={{ marginBottom: 16 }}>
           <ModeSwitcher mode={intensityMode} onChange={setIntensityMode} />
-          {intensity?.recommendedMode !== intensityMode && (
-            <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-              Recommended for this session: <strong>{intensity?.recommendedMode}</strong>
-            </p>
+          {intensity && intensity.recommendedMode !== intensityMode && (
+            <div
+              className="plan-info-banner"
+              style={{ marginTop: 10 }}
+              role="status"
+            >
+              <AlertCircle size={15} />
+              <span>
+                <strong>
+                  {MODE_LABELS.find((m) => m.value === intensity.recommendedMode)?.label}
+                </strong>{" "}
+                is the recommended guide for this session
+                {EASY_SESSION_TYPES.has(session.type)
+                  ? " — pace on easy days varies day-to-day with how you feel."
+                  : "."}
+              </span>
+            </div>
           )}
         </div>
       )}

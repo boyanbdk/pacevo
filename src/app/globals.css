@@ -1139,6 +1139,25 @@ button {
   line-height: 1.4;
 }
 
+.plan-info-banner {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid rgba(46, 213, 115, 0.32);
+  background: rgba(46, 213, 115, 0.08);
+  border-radius: var(--radius);
+  color: #c8f7d6;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.plan-info-banner svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--brand-2);
+}
+
 .field-label {
   color: var(--muted);
   font-size: 13px;

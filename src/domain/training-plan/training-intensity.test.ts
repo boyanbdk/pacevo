@@ -11,35 +11,53 @@ const HR_ZONES: HrZones = {
 };
 
 describe("renderIntensity", () => {
-  test("easy runs suppress pace targets by default", () => {
-    const display = renderIntensity("easy", 360, 420, "Z2", 4, HR_ZONES, "pace");
-
-    expect(display.displayMode).toBe("hr");
-    expect(display.primaryLabel).toBe("Z2 — Easy");
-    expect(display.primaryValue).toBe("114–132 bpm");
-    expect(display.secondary.map((item) => item.label)).not.toContain("Pace (ref)");
-  });
-
-  test("easy pace targets can be explicitly enabled", () => {
+  test("easy pace mode shows a window around the user's stated easy pace with no cross-mode clutter", () => {
     const display = renderIntensity("easy", 360, 420, "Z2", 4, HR_ZONES, "pace", {
-      showEasyRunPaceTargets: true,
       easyPaceTarget: "6:40",
     });
 
     expect(display.displayMode).toBe("pace");
-    expect(display.primaryLabel).toBe("Pace setting");
-    expect(display.primaryValue).toBe("6:40 /km");
+    expect(display.primaryLabel).toBe("Easy pace window");
+    expect(display.primaryValue).toBe("6:25–6:55 /km");
+    expect(display.secondary).toEqual([]);
+    expect(display.recommendedMode).toBe("hr");
   });
 
-  test("recovery pace targets use user settings instead of derived paces", () => {
+  test("easy hr mode shows only the HR target", () => {
+    const display = renderIntensity("easy", 360, 420, "Z2", 4, HR_ZONES, "hr");
+
+    expect(display.displayMode).toBe("hr");
+    expect(display.primaryLabel).toBe("Z2 — Easy");
+    expect(display.primaryValue).toBe("114–132 bpm");
+    expect(display.secondary).toEqual([]);
+  });
+
+  test("easy rpe mode shows only the RPE target", () => {
+    const display = renderIntensity("easy", 360, 420, "Z2", 4, HR_ZONES, "rpe");
+
+    expect(display.displayMode).toBe("rpe");
+    expect(display.primaryLabel).toBe("RPE");
+    expect(display.primaryValue).toBe("4/10");
+    expect(display.secondary).toEqual([]);
+  });
+
+  test("recovery pace window uses the user's recovery pace setting", () => {
     const display = renderIntensity("recovery", 390, 420, "Z1", 2, HR_ZONES, "pace", {
-      showEasyRunPaceTargets: true,
       easyPaceTarget: "6:40",
       recoveryPaceTarget: "7:05",
     });
 
     expect(display.displayMode).toBe("pace");
-    expect(display.primaryValue).toBe("7:05 /km");
+    expect(display.primaryLabel).toBe("Recovery pace window");
+    expect(display.primaryValue).toBe("6:50–7:20 /km");
+  });
+
+  test("easy pace mode falls back to a settings hint when no pace is set", () => {
+    const display = renderIntensity("easy", 360, 420, "Z2", 4, HR_ZONES, "pace", {
+      easyPaceTarget: "",
+    });
+
+    expect(display.primaryValue).toBe("Set in Settings");
   });
 
   test("hard sessions still expose pace as a reference in HR mode", () => {

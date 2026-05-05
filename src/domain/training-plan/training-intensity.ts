@@ -124,6 +124,23 @@ export type IntensityDisplay = {
 
 const EASY_PACE_SUPPRESSED_TYPES = new Set<SessionType>(["easy", "recovery"]);
 
+// Buffer around the user's stated easy/recovery pace, in seconds per km. Easy
+// running has a wide ideal band — fresher days come in faster, fatigued days
+// drift slower. ±15 s/km matches Daniels' E-pace window.
+const EASY_PACE_BUFFER_S = 15;
+
+function parseUserPaceToSeconds(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const match = value.match(/(\d+):(\d{2})/);
+  if (!match) return null;
+  const seconds = Number(match[1]) * 60 + Number(match[2]);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+}
+
+function easyUserPaceRange(seconds: number): string {
+  return `${fmtPaceSKm(seconds - EASY_PACE_BUFFER_S)}–${fmtPaceSKm(seconds + EASY_PACE_BUFFER_S)} /km`;
+}
+
 export function renderIntensity(
   sessionType: SessionType,
   paceLow: number | null,
@@ -139,18 +156,55 @@ export function renderIntensity(
   } = {},
 ): IntensityDisplay {
   const recMode = RECOMMENDED_MODE[sessionType] ?? "pace";
-  const easyRunPaceStr = easyRunPaceTarget(sessionType, options);
-  const suppressPace =
-    EASY_PACE_SUPPRESSED_TYPES.has(sessionType) && easyRunPaceStr === null;
-  const displayMode = suppressPace && mode === "pace" ? recMode : mode;
-  const paceStr = EASY_PACE_SUPPRESSED_TYPES.has(sessionType)
-    ? easyRunPaceStr
-    : fmtPaceRange(paceLow, paceHigh);
-  const paceLabel = EASY_PACE_SUPPRESSED_TYPES.has(sessionType) ? "Pace setting" : "Target pace";
-  const paceSecondaryLabel = EASY_PACE_SUPPRESSED_TYPES.has(sessionType) ? "Pace (setting)" : "Pace (ref)";
+  const isEasyType = EASY_PACE_SUPPRESSED_TYPES.has(sessionType);
   const rpeStr = fmtRpe(rpe, sessionType);
   const hrStr = hrBpmRange(hrZone, hrZones);
   const hrLabel = hrZone ? (HR_ZONE_LABELS[hrZone] ?? hrZone) : "HR target";
+
+  // Easy/recovery: each mode shows only its own metric. The user has
+  // explicitly picked a tab — keep the view focused on that signal and let
+  // the recommendation banner steer them back to RPE/HR. Pace mode synthesises
+  // a window from the user's stated easy pace ± buffer.
+  if (isEasyType) {
+    const userPaceSec = parseUserPaceToSeconds(
+      sessionType === "recovery" ? options.recoveryPaceTarget : options.easyPaceTarget,
+    );
+    const userPaceRange = userPaceSec !== null ? easyUserPaceRange(userPaceSec) : null;
+
+    if (mode === "pace") {
+      return {
+        displayMode: "pace",
+        primaryLabel: sessionType === "recovery" ? "Recovery pace window" : "Easy pace window",
+        primaryValue: userPaceRange ?? "Set in Settings",
+        secondary: [],
+        warning: null,
+        recommendedMode: recMode,
+      };
+    }
+    if (mode === "rpe") {
+      return {
+        displayMode: "rpe",
+        primaryLabel: "RPE",
+        primaryValue: rpeStr ?? "—",
+        secondary: [],
+        warning: null,
+        recommendedMode: recMode,
+      };
+    }
+    return {
+      displayMode: "hr",
+      primaryLabel: hrLabel,
+      primaryValue: hrStr ?? "—",
+      secondary: [],
+      warning: null,
+      recommendedMode: recMode,
+    };
+  }
+
+  const displayMode = mode;
+  const paceStr = fmtPaceRange(paceLow, paceHigh);
+  const paceLabel = "Target pace";
+  const paceSecondaryLabel = "Pace (ref)";
   const warning =
     displayMode === "hr" && HR_LAG_TYPES.has(sessionType) ? HR_LAG_WARNING : null;
 
@@ -177,7 +231,7 @@ export function renderIntensity(
       primaryLabel: "RPE",
       primaryValue: rpeStr ?? "—",
       secondary: compact([
-        paceStr && !suppressPace ? { label: paceSecondaryLabel, value: paceStr } : null,
+        paceStr ? { label: paceSecondaryLabel, value: paceStr } : null,
         hrStr && hrZone ? { label: hrZone, value: hrStr } : null,
       ]),
       warning,
@@ -192,26 +246,10 @@ export function renderIntensity(
     primaryValue: hrStr ?? "—",
     secondary: compact([
       rpeStr ? { label: "RPE", value: rpeStr } : null,
-      paceStr && !suppressPace ? { label: paceSecondaryLabel, value: paceStr } : null,
+      paceStr ? { label: paceSecondaryLabel, value: paceStr } : null,
     ]),
     warning,
     recommendedMode: recMode,
   };
 }
 
-function easyRunPaceTarget(
-  sessionType: SessionType,
-  options: {
-    showEasyRunPaceTargets?: boolean;
-    easyPaceTarget?: string | null;
-    recoveryPaceTarget?: string | null;
-  },
-): string | null {
-  if (!EASY_PACE_SUPPRESSED_TYPES.has(sessionType) || options.showEasyRunPaceTargets !== true) {
-    return null;
-  }
-  const value = sessionType === "recovery" ? options.recoveryPaceTarget : options.easyPaceTarget;
-  const trimmed = value?.trim();
-  if (!trimmed) return null;
-  return trimmed.includes("/") ? trimmed : `${trimmed} /km`;
-}
