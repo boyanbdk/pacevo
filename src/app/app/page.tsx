@@ -25,6 +25,7 @@ import {
   PHASE_LABELS,
   SESSION_LABELS,
   RULE_LABELS,
+  type ActivityItem,
   completedKeys,
   completedKmForWeek,
   currentWeekIndex,
@@ -42,6 +43,7 @@ import {
   startOfToday,
   weeksRemaining,
 } from "@/lib/training-dashboard";
+import type { ImportedActivity } from "@/domain/training-plan/activity-import";
 
 function EmptyDashboard({ workoutsCount }: { workoutsCount: number }) {
   return (
@@ -82,7 +84,36 @@ function EmptyDashboard({ workoutsCount }: { workoutsCount: number }) {
   );
 }
 
+type StravaActivityState =
+  | { status: "idle" | "loading"; connected: boolean; activities: ImportedActivity[]; error: null }
+  | { status: "ready"; connected: boolean; activities: ImportedActivity[]; error: null }
+  | { status: "error"; connected: boolean; activities: ImportedActivity[]; error: string };
+
+function stravaActivityItems(plan: SavedPlan, activities: ImportedActivity[]): ActivityItem[] {
+  const logged = new Set(
+    plan.completedSessions
+      .filter((session) => session.source === "strava")
+      .map((session) => `${session.date}:${session.actualKm?.toFixed(2) ?? ""}`),
+  );
+
+  return activities
+    .filter((activity) => !logged.has(`${activity.date}:${activity.distanceKm.toFixed(2)}`))
+    .map((activity) => ({
+      id: activity.id,
+      createdAt: activity.startedAt,
+      label: "Strava run",
+      detail: `${formatDate(activity.date)} · ${activity.distanceKm.toFixed(2)} km · ${Math.round(activity.durationMin)} min${activity.avgHR ? ` · ${activity.avgHR} bpm` : ""}`,
+      href: `/app/plans/${plan.id}`,
+    }));
+}
+
 function ActivePlanDashboard({ plan, workouts }: { plan: SavedPlan; workouts: SavedWorkout[] }) {
+  const [strava, setStrava] = useState<StravaActivityState>({
+    status: "idle",
+    connected: false,
+    activities: [],
+    error: null,
+  });
   const weekIndex = currentWeekIndex(plan);
   const week = plan.plan.weeks[weekIndex];
   const status = planStatus(plan, weekIndex);
@@ -95,7 +126,44 @@ function ActivePlanDashboard({ plan, workouts }: { plan: SavedPlan; workouts: Sa
   const latestAdaptation = [...plan.adaptationEvents].sort((a, b) => b.firedAt.localeCompare(a.firedAt))[0];
   const longRun = nextLongRun(plan, weekIndex);
   const feedbackTarget = latestFeedbackNeeded(plan);
-  const activity = recentActivity(plan, workouts);
+  const localActivity = recentActivity(plan, workouts);
+  const stravaItems = stravaActivityItems(plan, strava.activities);
+  const activity = [...localActivity, ...stravaItems]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 6);
+
+  async function loadStravaActivities(sync = false) {
+    setStrava((prev) => ({ ...prev, status: "loading", error: null }));
+    try {
+      const response = await fetch(`/api/integrations/strava/activities${sync ? "?sync=1" : ""}`, {
+        cache: "no-store",
+      });
+      const payload = await response.json() as {
+        connected?: boolean;
+        activities?: ImportedActivity[];
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Could not load Strava activities.");
+      }
+      setStrava({
+        status: "ready",
+        connected: Boolean(payload.connected),
+        activities: payload.activities ?? [],
+        error: null,
+      });
+    } catch (error) {
+      setStrava((prev) => ({
+        ...prev,
+        status: "error",
+        error: error instanceof Error ? error.message : "Could not load Strava activities.",
+      }));
+    }
+  }
+
+  useEffect(() => {
+    loadStravaActivities(true);
+  }, []);
 
   return (
     <div className="dashboard-stack">
@@ -238,14 +306,30 @@ function ActivePlanDashboard({ plan, workouts }: { plan: SavedPlan; workouts: Sa
 
         <section className="panel">
           <div className="dashboard-section-head">
-            <h2>Recent activity</h2>
-            <GitBranch size={18} />
+            <div>
+              <h2>Recent activity</h2>
+              {strava.connected && (
+                <span className="muted">
+                  {strava.status === "loading" ? "Syncing Strava..." : `${strava.activities.length} Strava run${strava.activities.length === 1 ? "" : "s"} synced`}
+                </span>
+              )}
+              {strava.status === "error" && <span className="muted">{strava.error}</span>}
+            </div>
+            <button
+              className="button ghost compact"
+              type="button"
+              onClick={() => loadStravaActivities(true)}
+              disabled={strava.status === "loading"}
+            >
+              <GitBranch size={16} />
+              Sync
+            </button>
           </div>
           {activity.length === 0 ? (
             <div className="empty compact-empty">
               <div>
                 <Activity size={26} />
-                <p>No activity recorded yet.</p>
+                <p>{strava.connected ? "No Strava runs found yet." : "No activity recorded yet."}</p>
               </div>
             </div>
           ) : (
