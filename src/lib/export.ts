@@ -16,7 +16,7 @@ import { groupAdjustedSteps } from "../domain/run-tailor";
 import type { AdjustedWorkout, UserSettings } from "../domain/workout-schema";
 import type { AdjustedStepGroup } from "../domain/workout-schema";
 import type { PlannedSession, TrainingPlan } from "../domain/training-plan/types";
-import { BRAND_MOTTO, BRAND_NAME } from "./brand";
+import { BRAND_EXPORT_LABEL, BRAND_MOTTO, BRAND_NAME } from "./brand";
 import { formatPlanDate, formatWeekRange, formatWeekdayDate } from "./plan-dates";
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -208,10 +208,17 @@ export function exportPlanPdf(plan: TrainingPlan, options?: PlanExportOptions) {
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(22);
   pdf.text(`${PLAN_GOAL_LABELS[plan.meta.goal_race] ?? plan.meta.goal_race} Training Plan`, margin, y);
-  y += 24;
+  y += 18;
+
+  // Brand line
+  pdf.setTextColor(201, 255, 64);
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(10);
+  pdf.text(BRAND_EXPORT_LABEL, margin, y);
+  y += 20;
 
   // Subtitle
-  pdf.setTextColor(201, 255, 64);
+  pdf.setTextColor(200, 200, 200);
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(10);
   const goalDate = formatPlanDate(plan.meta.goal_date, {
@@ -280,6 +287,14 @@ export async function exportPlanDocx(plan: TrainingPlan, options?: PlanExportOpt
     new Paragraph({
       text: `${goalLabel} Training Plan`,
       heading: HeadingLevel.TITLE,
+    }),
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: BRAND_EXPORT_LABEL,
+          bold: true,
+        }),
+      ],
     }),
     new Paragraph({
       children: [

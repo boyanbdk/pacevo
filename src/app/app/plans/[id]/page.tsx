@@ -9,6 +9,7 @@ import { matchImportedActivities, parseActivityFile, type ActivityMatch, type Im
 import { splitPlanWarnings } from "@/domain/training-plan/warnings";
 import type { TrainingWeek } from "@/domain/training-plan/types";
 import { planSettingsSummary } from "@/lib/plan-display";
+import { BRAND_NAME } from "@/lib/brand";
 import { formatShortPlanDate, formatWeekRange, formatWeekdayDate, parsePlanDate } from "@/lib/plan-dates";
 import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
 import { applyAdaptation, getPlan, getWorkoutPreferences, logSession, removeCompletedSession, updatePlanStatus } from "@/lib/plan-storage";
@@ -693,7 +694,7 @@ function AdaptationTimeline({
       <div className="empty" style={{ minHeight: 140 }}>
         <div>
           <Zap size={28} />
-          <p>No adaptations yet. Log sessions and the plan will adjust automatically.</p>
+          <p>No adaptations yet. Log sessions and {BRAND_NAME} will adjust automatically.</p>
         </div>
       </div>
     );
@@ -1189,7 +1190,7 @@ export default function PlanDetailPage() {
         <div className="panel">
           <h2>Adaptation history</h2>
           <p className="muted" style={{ marginBottom: 16 }}>
-            Every time the plan adjusts based on your logged sessions, the reason is recorded here.
+            Every time {BRAND_NAME} adjusts based on your logged sessions, the reason is recorded here.
           </p>
           <AdaptationTimeline events={plan.adaptationEvents} onSelect={setSelectedEvent} />
         </div>
