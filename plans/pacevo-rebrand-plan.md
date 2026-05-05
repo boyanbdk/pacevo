@@ -686,6 +686,73 @@ Before shipping:
 - [x] Manual route QA complete on desktop and mobile.
 - [x] Export QA complete for PNG, PDF, and DOCX.
 
+## Post-Implementation Design Review
+
+Review date: 2026-05-05
+Skill: `/design-review`
+Status: DONE_WITH_CONCERNS
+
+The rebrand is broadly in place: metadata uses Pacevo, the shell uses the Pacevo mark, visible source search no longer shows old brand strings in normal app UI, storage migration preserves `run-tailor:*` legacy keys, and PDF/DOCX export code uses the Pacevo brand line.
+
+Two rebrand-specific misses remain:
+
+1. Auth mobile density misses the rebrand's first-impression target. At 375px wide, the auth brand panel renders at roughly 530px high, the form starts around 572px, and the primary submit action lands below the first viewport. The page says Pacevo, but the brand panel dominates the first-run task.
+2. Plan week PNG export is not visibly Pacevo-branded. `exportPlanWeekImage()` captures the selected week DOM, but the exported `ContinuousWeek` / `WeekCard` content does not include `PACEVO / PLAN. ADAPT. LEARN.` or the mark. Full-plan PDF and DOCX exports are branded; week PNG export is the gap.
+
+Verification notes:
+
+- `rg "Run Tailor|RUN TAILOR|run-tailor-app|Loading Run Tailor|RT" src README.md package.json plans running` only returned expected legacy/internal/doc references, plus the rebrand plan's own inventory and examples.
+- `npm test` passed: 17 test files, 273 tests.
+- `npm run build` passed.
+- Browser check at `http://localhost:3002/login` showed document title `Pacevo` and no old brand in the visible auth surface.
+- Signed-out `/app` redirects to `/login`, so full authenticated route screenshots still need a seeded session or test user to make the "Manual route QA complete" checkbox defensible.
+
+### Phase 18: Rebrand Closure Pass
+
+Files:
+
+- `src/app/globals.css`
+- `src/components/AuthForm.tsx`
+- `src/app/app/plans/[id]/page.tsx`
+- `src/lib/export.ts`
+
+Tasks:
+
+1. Tighten auth first-impression mobile layout:
+   - Add a `max-width: 600px` auth override.
+   - Reduce auth page padding, brand panel padding, mark size, and hero heading size on narrow screens.
+   - Make the proof-point row compact enough that the form heading and first field are visible in the first 375px viewport.
+   - Keep the Pacevo mark crisp and avoid adding extra decorative effects.
+2. Brand plan week PNG exports:
+   - Add a compact export-only Pacevo header or footer inside the DOM region passed to `exportPlanWeekImage()`.
+   - Use `BRAND_EXPORT_LABEL` so PNG, PDF, and DOCX share the same export brand language.
+   - Verify both desktop `ContinuousWeek` and mobile `WeekCard` export paths, since the current export function can capture either node.
+3. Re-run visual QA with evidence:
+   - `/login` at 1440px and 375px.
+   - `/register` at 1440px and 375px.
+   - One authenticated dashboard route at desktop and mobile.
+   - One plan detail route at desktop and mobile.
+   - Workout PNG/PDF/DOCX export.
+   - Plan PNG/PDF/DOCX export.
+4. Update the release checklist only after evidence exists:
+   - Keep manual route QA checked only if screenshots were captured.
+   - Keep export QA checked only if generated files were inspected for Pacevo branding.
+
+Acceptance criteria:
+
+- The auth page still feels like Pacevo, but mobile users reach the form without the brand panel taking over the first viewport.
+- Plan week PNG exports visibly carry Pacevo branding.
+- The rebrand checklist is backed by repeatable browser and export evidence.
+
+Phase 18 completion evidence:
+
+- Auth screenshots captured at 375px and 1440px for `/login` and `/register` in `/tmp/pacevo-phase18-shots/`.
+- 375px auth layout measured `scrollWidth: 375`, form top at 252px, first email field at 400px, and submit button at 539px.
+- Authenticated screenshots captured at 375px and 1440px for `/app` and `/app/plans/phase18-plan` in `/tmp/pacevo-phase18-shots/`.
+- Plan week PNG exports verified on both desktop `ContinuousWeek` and mobile `WeekCard`; both show `PACEVO / PLAN. ADAPT. LEARN.`.
+- Export files generated in `/tmp/pacevo-phase18-downloads/`: workout PNG/PDF/DOCX and plan PNG/PDF/DOCX.
+- Plan PDF/DOCX were inspected for `PACEVO / PLAN. ADAPT. LEARN.`; workout PDF/DOCX were inspected for Pacevo branding.
+
 ## Review Notes From Gstack Planning Lenses
 
 CEO review:

@@ -9,7 +9,7 @@ import { matchImportedActivities, parseActivityFile, type ActivityMatch, type Im
 import { splitPlanWarnings } from "@/domain/training-plan/warnings";
 import type { TrainingWeek } from "@/domain/training-plan/types";
 import { planSettingsSummary } from "@/lib/plan-display";
-import { BRAND_NAME } from "@/lib/brand";
+import { BRAND_EXPORT_LABEL, BRAND_NAME } from "@/lib/brand";
 import { formatShortPlanDate, formatWeekRange, formatWeekdayDate, parsePlanDate } from "@/lib/plan-dates";
 import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
 import { applyAdaptation, getPlan, getWorkoutPreferences, logSession, removeCompletedSession, updatePlanStatus } from "@/lib/plan-storage";
@@ -518,6 +518,7 @@ function WeekCalendarSection({
   const week = plan.plan.weeks[weekIndex];
   return (
     <section className={`continuous-week${active ? " active" : ""}`} ref={registerRef}>
+      <div className="plan-week-export-brand" aria-hidden="true">{BRAND_EXPORT_LABEL}</div>
       <div className="continuous-week-header">
         <div>
           <span className="card-kicker">{weekLabel(week)}</span>
@@ -567,6 +568,7 @@ function WeekCard({
       onClick={onClick}
       type="button"
     >
+      <div className="plan-week-export-brand" aria-hidden="true">{BRAND_EXPORT_LABEL}</div>
       <div className="week-card-header">
         <div>
           <span className="card-kicker">{weekLabel(week)}</span>
@@ -1027,7 +1029,10 @@ export default function PlanDetailPage() {
             className="button ghost"
             title="Export week as PNG"
             onClick={() => {
-              const node = weekSectionRefs.current[weekIndex] ?? mobileWeekRefs.current[weekIndex];
+              const isMobile = window.matchMedia("(max-width: 900px)").matches;
+              const node = isMobile
+                ? mobileWeekRefs.current[weekIndex] ?? weekSectionRefs.current[weekIndex]
+                : weekSectionRefs.current[weekIndex] ?? mobileWeekRefs.current[weekIndex];
               if (node) exportPlanWeekImage(node, plan.plan.meta.goal_race, weekIndex);
             }}
           >

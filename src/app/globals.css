@@ -192,6 +192,83 @@ button {
   gap: 14px;
 }
 
+@media (max-width: 600px) {
+  .auth-page {
+    min-height: 100dvh;
+    display: block;
+    padding: 10px;
+    overflow-x: hidden;
+  }
+
+  .auth-shell {
+    width: 100%;
+    max-width: 100%;
+    gap: 10px;
+  }
+
+  .brand-panel {
+    width: 100%;
+    max-width: calc(100vw - 20px);
+    min-width: 0;
+    min-height: 0;
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .auth-brand-mark {
+    width: 48px;
+    height: 48px;
+    box-shadow: none;
+  }
+
+  .hero-copy h1 {
+    max-width: none;
+    font-size: 38px;
+    line-height: 0.94;
+  }
+
+  .hero-copy p {
+    margin: 6px 0 0;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .brand-panel .auth-proof-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .brand-panel .auth-proof-row .metric {
+    padding: 8px 6px;
+  }
+
+  .brand-panel .auth-proof-row .metric strong {
+    font-size: 14px;
+  }
+
+  .brand-panel .auth-proof-row .metric span {
+    display: none;
+  }
+
+  .form-panel {
+    width: 100%;
+    max-width: calc(100vw - 20px);
+    min-width: 0;
+    padding: 16px;
+  }
+
+  .form-panel h2 {
+    margin: 0 0 4px;
+    font-size: 22px;
+  }
+
+  .form-panel .muted,
+  .hero-copy p {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+}
+
 .field {
   display: grid;
   gap: 7px;
@@ -1338,6 +1415,23 @@ button {
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.018);
   transition: border-color 0.15s, background 0.15s;
+}
+
+.plan-week-export-brand {
+  display: none;
+}
+
+[data-exporting="true"] .plan-week-export-brand {
+  display: block;
+  padding: 10px 12px 0;
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.continuous-week[data-exporting="true"] .continuous-week-header {
+  position: static;
 }
 
 .continuous-week.active {

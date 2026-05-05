@@ -41,7 +41,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             <h1>{BRAND_NAME}</h1>
             <p>Plan your race build, adapt each run to today, and learn from the feedback loop.</p>
           </div>
-          <div className="metric-row">
+          <div className="metric-row auth-proof-row">
             <div className="metric">
               <strong>Plan</strong>
               <span>race-ready weeks</span>

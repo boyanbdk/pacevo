@@ -377,13 +377,18 @@ export async function exportPlanDocx(plan: TrainingPlan, options?: PlanExportOpt
 }
 
 export async function exportPlanWeekImage(node: HTMLElement, goalRace: string, weekIndex: number) {
-  const dataUrl = await toPng(node, {
-    cacheBust: true,
-    pixelRatio: 2,
-    backgroundColor: "#171d21",
-  });
-  const response = await fetch(dataUrl);
-  downloadBlob(await response.blob(), `${slugify(goalRace)}-week-${weekIndex + 1}.png`);
+  node.dataset.exporting = "true";
+  try {
+    const dataUrl = await toPng(node, {
+      cacheBust: true,
+      pixelRatio: 2,
+      backgroundColor: "#171d21",
+    });
+    const response = await fetch(dataUrl);
+    downloadBlob(await response.blob(), `${slugify(goalRace)}-week-${weekIndex + 1}.png`);
+  } finally {
+    delete node.dataset.exporting;
+  }
 }
 
 export async function exportWorkoutDocx(workout: AdjustedWorkout) {
