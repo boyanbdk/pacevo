@@ -13,7 +13,7 @@ import { formatShortPlanDate, formatWeekRange, formatWeekdayDate, parsePlanDate 
 import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
 import { applyAdaptation, getPlan, getWorkoutPreferences, logSession, removeCompletedSession, updatePlanStatus } from "@/lib/plan-storage";
 import { exportPlanDocx, exportPlanPdf, exportPlanWeekImage } from "@/lib/export";
-import { getSettings } from "@/lib/storage";
+import { getSettings, getUser } from "@/lib/storage";
 import type { UserSettings } from "@/domain/workout-schema";
 
 // ---------------------------------------------------------------------------
@@ -194,6 +194,43 @@ function ImportedActivityPanel({
     }
   }
 
+  async function loadStravaActivities() {
+    const user = getUser();
+    if (!user) {
+      setError("Log in before loading Strava activities.");
+      return;
+    }
+
+    setError(null);
+    setMessage(null);
+    setImporting(true);
+    try {
+      const response = await fetch(`/api/integrations/strava/activities?sync=1&email=${encodeURIComponent(user.email)}`);
+      const payload = await response.json() as {
+        connected?: boolean;
+        synced?: number;
+        activities?: ImportedActivity[];
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Could not load Strava activities.");
+      }
+      if (!payload.connected) {
+        setError("Connect Strava in Settings first.");
+        return;
+      }
+
+      const runs = payload.activities ?? [];
+      setActivities(runs);
+      setMatches(matchImportedActivities(plan.plan, runs, plan.completedSessions));
+      setMessage(`Loaded ${runs.length} Strava activit${runs.length === 1 ? "y" : "ies"}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load Strava activities.");
+    } finally {
+      setImporting(false);
+    }
+  }
+
   function resolvedTarget(match: ActivityMatch): { weekIndex: number; dayIndex: number } | null {
     const ov = overrides[match.activity.id];
     if (ov !== undefined) return ov;
@@ -219,7 +256,7 @@ function ImportedActivityPanel({
       maxHR: match.activity.maxHR,
       rpe: null,
       note: `Imported from ${match.activity.fileName}`,
-      source: "file_import",
+      source: match.activity.source === "strava" ? "strava" : "file_import",
     });
 
     let refreshed = getPlan(plan.id)!;
@@ -311,8 +348,11 @@ function ImportedActivityPanel({
         <FileUp size={26} />
         <div>
           <h3>Activity files</h3>
-          <p className="muted">GPX and TCX runs from Garmin, Strava, Coros, Suunto, or Apple Health exports.</p>
+          <p className="muted">GPX and TCX files, or connected Strava runs synced through the backend.</p>
         </div>
+        <button className="button secondary" type="button" onClick={loadStravaActivities} disabled={importing}>
+          Load Strava runs
+        </button>
         <label className="button primary import-file-button">
           Choose files
           <input

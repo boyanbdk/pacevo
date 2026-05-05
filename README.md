@@ -23,6 +23,27 @@ npm run build     # production build
 npm audit --omit=dev
 ```
 
+### Free Backend Setup
+
+The app still supports local-only usage, but Strava automatic import needs a real backend because Strava webhooks require a public HTTPS URL and OAuth refresh tokens must be stored server-side.
+
+Recommended free-first setup:
+
+1. Create a free Supabase project.
+2. Run `db/schema.sql` in the Supabase SQL editor.
+3. Copy `.env.example` to `.env.local` and fill in the Supabase and Strava values.
+4. Set `NEXT_PUBLIC_APP_URL` to your deployed app URL in production.
+5. In Strava API settings, set the authorization callback domain to your app domain.
+6. Create a Strava webhook subscription pointing to:
+
+```text
+https://your-app.example.com/api/integrations/strava/webhook
+```
+
+Connect Strava from `/app/settings`. New Strava activity webhook events are stored server-side, and the plan import panel can load those runs with “Load Strava runs” and match them against planned sessions.
+
+Current limitation: plans are still stored locally in the browser, so the webhook stores activities automatically, but applying them to a plan still happens when the app loads Strava runs into the existing matcher. The next backend migration should move `SavedPlan` records into Postgres so webhook processing can mark sessions completed without a browser round trip.
+
 ### Planning Docs
 
 - Canonical execution plan: `plans/adaptive-workout-generation/coach-plan-rebuild.md`

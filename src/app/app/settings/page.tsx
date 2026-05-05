@@ -1,13 +1,16 @@
 "use client";
 
-import { Save } from "lucide-react";
+import { Activity, Save } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { UserSettings } from "@/domain/workout-schema";
-import { getSettings, saveSettings } from "@/lib/storage";
+import { getSettings, getUser, saveSettings } from "@/lib/storage";
 
 export default function SettingsPage() {
+  const searchParams = useSearchParams();
   const [settings, setSettings] = useState<UserSettings>(getSettings());
   const [saved, setSaved] = useState(false);
+  const stravaStatus = searchParams.get("strava");
 
   useEffect(() => {
     setSettings(getSettings());
@@ -17,6 +20,12 @@ export default function SettingsPage() {
     event.preventDefault();
     saveSettings(settings);
     setSaved(true);
+  }
+
+  function connectStrava() {
+    const user = getUser();
+    if (!user) return;
+    window.location.href = `/api/integrations/strava/connect?email=${encodeURIComponent(user.email)}`;
   }
 
   return (
@@ -86,6 +95,22 @@ export default function SettingsPage() {
         </button>
         {saved && <span className="tag">Saved</span>}
       </form>
+      <section className="panel stack">
+        <div className="section-heading">
+          <div>
+            <h2>Connected apps</h2>
+            <p>Use Strava to pull completed runs into server-side storage for automatic matching.</p>
+          </div>
+        </div>
+        <div className="action-row">
+          <button className="button secondary" type="button" onClick={connectStrava}>
+            <Activity size={17} />
+            Connect Strava
+          </button>
+          {stravaStatus === "connected" && <span className="tag active-tag">Strava connected</span>}
+          {stravaStatus === "denied" && <span className="tag warn">Strava connection denied</span>}
+        </div>
+      </section>
     </>
   );
 }

@@ -1,8 +1,9 @@
 "use client";
 
-import { Activity, CalendarRange, Home, LogOut, Plus, Scissors, Settings } from "lucide-react";
+import { Activity, CalendarRange, Home, LogOut, Plus, RefreshCw, Settings } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { BRAND_ASSETS, BRAND_NAME } from "@/lib/brand";
 import { clearUser } from "@/lib/storage";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -11,8 +12,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navItems = [
     { href: "/app", label: "Dashboard", icon: Home },
     { href: "/app/new", label: "New workout", icon: Plus },
-    { href: "/app/tailoring", label: "Tailor workout", icon: Scissors },
-    { href: "/app/plans", label: "Training plans", icon: CalendarRange },
+    { href: "/app/tailoring", label: "Adapt workout", icon: RefreshCw },
+    { href: "/app/plans", label: "Plans", icon: CalendarRange },
   ];
 
   function signOut() {
@@ -24,8 +25,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="app-layout">
       <aside className="sidebar">
         <Link href="/app" className="logo-row">
-          <span className="brand-mark">RT</span>
-          <span>Run Tailor</span>
+          <span className="brand-mark shell-brand-mark">
+            <img src={BRAND_ASSETS.markDark} alt="" aria-hidden="true" />
+          </span>
+          <span>{BRAND_NAME}</span>
         </Link>
         <nav className="nav">
           {navItems.map((item) => {
@@ -52,8 +55,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div>
         <div className="mobile-topbar">
           <Link href="/app" className="logo-row">
-            <span className="brand-mark">RT</span>
-            <span>Run Tailor</span>
+            <span className="brand-mark shell-brand-mark">
+              <img src={BRAND_ASSETS.markDark} alt="" aria-hidden="true" />
+            </span>
+            <span>{BRAND_NAME}</span>
           </Link>
           <Link className="button ghost" href="/app/new" aria-label="New workout">
             <Activity size={18} />

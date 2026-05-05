@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { BRAND_ASSETS, BRAND_MOTTO, BRAND_NAME } from "@/lib/brand";
 import { saveUser } from "@/lib/storage";
 
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
@@ -22,30 +23,33 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
     <div className="auth-page">
       <div className="auth-shell">
         <section className="brand-panel">
-          <div className="brand-mark">RT</div>
+          <div className="brand-mark auth-brand-mark">
+            <img src={BRAND_ASSETS.markDark} alt="" aria-hidden="true" />
+          </div>
           <div className="hero-copy">
-            <h1>Run Tailor</h1>
-            <p>Convert a coach plan into a clear treadmill or outdoor execution card for how you feel today.</p>
+            <span className="card-kicker">{BRAND_MOTTO}</span>
+            <h1>{BRAND_NAME}</h1>
+            <p>Plan your race build, adapt each run to today, and learn from the feedback loop.</p>
           </div>
           <div className="metric-row">
             <div className="metric">
-              <strong>1-10</strong>
-              <span>readiness lane</span>
+              <strong>Plan</strong>
+              <span>race-ready weeks</span>
             </div>
             <div className="metric">
-              <strong>km/h</strong>
-              <span>pace converted</span>
+              <strong>Adapt</strong>
+              <span>today&apos;s readiness</span>
             </div>
             <div className="metric">
-              <strong>PNG</strong>
-              <span>PDF and DOCX</span>
+              <strong>Learn</strong>
+              <span>feedback loop</span>
             </div>
           </div>
         </section>
         <form className="form-panel form-grid" onSubmit={submit}>
           <div>
             <h2>{isRegister ? "Create account" : "Log in"}</h2>
-            <p className="muted">Local MVP account storage keeps the app gated on this device.</p>
+            <p className="muted">Local account storage keeps your training workspace on this device.</p>
           </div>
           <div className="field">
             <label htmlFor="email">Email</label>

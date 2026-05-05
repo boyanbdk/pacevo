@@ -1,14 +1,25 @@
 :root {
-  --bg: #111417;
-  --panel: #171d21;
-  --panel-strong: #20282d;
-  --line: #2d373d;
-  --text: #f5f7f2;
-  --muted: #9aa59f;
-  --brand: #c9ff40;
-  --brand-2: #28d2ae;
-  --danger: #ff6b6b;
-  --amber: #ffbf47;
+  --pacevo-ink: #080a0b;
+  --pacevo-bg: #111417;
+  --pacevo-graphite: #171d21;
+  --pacevo-graphite-strong: #20282d;
+  --pacevo-line: #2d373d;
+  --pacevo-mist: #f5f7f2;
+  --pacevo-muted: #9aa59f;
+  --pacevo-volt: #d8ff00;
+  --pacevo-signal: #28d2ae;
+  --pacevo-danger: #ff6b6b;
+  --pacevo-warning: #ffbf47;
+  --bg: var(--pacevo-bg);
+  --panel: var(--pacevo-graphite);
+  --panel-strong: var(--pacevo-graphite-strong);
+  --line: var(--pacevo-line);
+  --text: var(--pacevo-mist);
+  --muted: var(--pacevo-muted);
+  --brand: var(--pacevo-volt);
+  --brand-2: var(--pacevo-signal);
+  --danger: var(--pacevo-danger);
+  --amber: var(--pacevo-warning);
   --radius: 8px;
 }
 
@@ -93,6 +104,40 @@ button {
   color: #111417;
   background: var(--brand);
   font-weight: 900;
+}
+
+.shell-brand-mark {
+  width: 42px;
+  height: 42px;
+  overflow: hidden;
+  color: transparent;
+  background: var(--pacevo-ink);
+  border: 1px solid rgba(216, 255, 0, 0.34);
+  box-shadow: 0 0 18px rgba(216, 255, 0, 0.16);
+}
+
+.shell-brand-mark img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.auth-brand-mark {
+  width: 76px;
+  height: 76px;
+  overflow: hidden;
+  color: transparent;
+  background: var(--pacevo-ink);
+  border: 1px solid rgba(216, 255, 0, 0.38);
+  box-shadow: 0 0 28px rgba(216, 255, 0, 0.2);
+}
+
+.auth-brand-mark img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 .hero-copy h1,
@@ -298,6 +343,14 @@ button {
   gap: 10px;
   font-weight: 900;
   font-size: 18px;
+  min-width: 0;
+}
+
+.logo-row span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .nav {

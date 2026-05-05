@@ -1,6 +1,7 @@
 import { calculateWorkoutPreferences } from "../domain/training-plan";
 import type { PlannedSession, TrainingWeek } from "../domain/training-plan";
 import type { SavedWorkout } from "../domain/workout-schema";
+import { BRAND_NAME } from "./brand";
 import type { CompletedSession, SavedPlan } from "./plan-storage";
 
 export const GOAL_LABELS: Record<string, string> = {
@@ -179,7 +180,7 @@ export function planStatus(
     return fired >= weekStart && fired < weekEnd;
   });
   if (adaptedThisWeek) {
-    return { label: "Adapted this week", tone: "info", detail: "Plan changed after recent training data" };
+    return { label: "Adapted this week", tone: "info", detail: `${BRAND_NAME} adjusted the plan after recent training data` };
   }
 
   return { label: "On track", tone: "ok", detail: "No missed sessions requiring action" };
@@ -205,7 +206,7 @@ export function recentActivity(plan: SavedPlan, workouts: SavedWorkout[]): Activ
   const logs = plan.completedSessions.map((session) => ({
     id: `log-${session.id}`,
     createdAt: session.createdAt,
-    label: session.source === "file_import" ? "Imported run" : "Logged run",
+    label: session.source === "manual" ? "Logged run" : "Imported run",
     detail: `${formatDate(session.date)} · ${session.actualKm ? `${session.actualKm.toFixed(1)} km` : "distance not set"}`,
     href: `/app/plans/${plan.id}/sessions/${session.weekIndex}-${session.dayIndex}`,
   }));

@@ -16,6 +16,7 @@ import {
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { SavedWorkout } from "@/domain/workout-schema";
+import { BRAND_NAME } from "@/lib/brand";
 import type { SavedPlan } from "@/lib/plan-storage";
 import { getPlans } from "@/lib/plan-storage";
 import { getWorkouts } from "@/lib/storage";
@@ -52,7 +53,7 @@ function EmptyDashboard({ workoutsCount }: { workoutsCount: number }) {
           </span>
           <h2>No active training plan</h2>
           <p className="muted">
-            Build a race plan first, then this screen will show today&apos;s workout and weekly progress.
+            Build a race plan first, then {BRAND_NAME} will show today&apos;s workout, weekly progress, and what changes as you train.
           </p>
         </div>
         <div className="button-row">
@@ -172,7 +173,7 @@ function ActivePlanDashboard({ plan, workouts }: { plan: SavedPlan; workouts: Sa
               <Target size={18} />
               <div>
                 <strong>Rate your latest workout</strong>
-                <span className="muted">Your feedback can shape future sessions.</span>
+                <span className="muted">{BRAND_NAME} uses feedback to shape future sessions.</span>
               </div>
               <ChevronRight size={16} />
             </Link>
@@ -293,7 +294,7 @@ export default function DashboardPage() {
       <div className="page-header">
         <div className="page-title">
           <h1>Dashboard</h1>
-          <p>Today&apos;s run, weekly progress, and recent plan changes.</p>
+          <p>Today&apos;s run, weekly progress, and what {BRAND_NAME} learned from your recent training.</p>
         </div>
         <div className="button-row">
           <Link className="button ghost" href="/app/plans/new">

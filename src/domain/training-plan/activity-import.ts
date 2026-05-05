@@ -3,7 +3,7 @@ import type { CompletedSession } from "@/lib/plan-storage";
 
 export type ImportedActivity = {
   id: string;
-  source: "gpx" | "tcx";
+  source: "gpx" | "tcx" | "strava";
   fileName: string;
   name: string;
   startedAt: string;

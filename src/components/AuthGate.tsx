@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { BRAND_NAME } from "@/lib/brand";
 import { getUser } from "@/lib/storage";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
@@ -17,7 +18,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   if (!ready) {
-    return <div className="auth-page muted">Loading Run Tailor...</div>;
+    return <div className="auth-page muted">Loading {BRAND_NAME}...</div>;
   }
 
   return children;

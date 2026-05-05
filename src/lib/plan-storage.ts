@@ -24,7 +24,7 @@ export type CompletedSession = {
   maxHR: number | null;
   rpe: number | null;
   note: string;
-  source: "manual" | "file_import";
+  source: "manual" | "file_import" | "strava";
   createdAt: string;
 };
 
