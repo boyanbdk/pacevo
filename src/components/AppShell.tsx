@@ -13,7 +13,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { href: "/app/new", label: "New workout", icon: Plus },
     { href: "/app/tailoring", label: "Tailor workout", icon: Scissors },
     { href: "/app/plans", label: "Training plans", icon: CalendarRange },
-    { href: "/app/settings", label: "Settings", icon: Settings }
   ];
 
   function signOut() {
@@ -38,11 +37,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
+        </nav>
+        <div className="nav sidebar-bottom-nav">
+          <Link href="/app/settings" className={pathname.startsWith("/app/settings") ? "active" : ""}>
+            <Settings size={18} />
+            Settings
+          </Link>
           <button onClick={signOut}>
             <LogOut size={18} />
             Sign out
           </button>
-        </nav>
+        </div>
       </aside>
       <div>
         <div className="mobile-topbar">

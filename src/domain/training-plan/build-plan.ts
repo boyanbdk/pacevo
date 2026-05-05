@@ -663,9 +663,16 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
     ? resolveSafeLevel(inputs.self_selected_level, inferredLevel)
     : inferredLevel;
 
-  // 4. Plan length
-  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-  const weeksTotal = Math.max(1, Math.ceil((goalDateObj.getTime() - today.getTime()) / msPerWeek));
+  // 4. Plan length — anchor from aligned Monday so the final week always contains goal_date.
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const msPerWeek = 7 * msPerDay;
+  const planStartAligned = nextMonday(today);
+  // Truncate both dates to UTC midnight before computing the week count so
+  // time-of-day does not cause off-by-one errors and local timezone offsets
+  // from setHours do not shift the plan start date.
+  const planStartDay = Math.trunc(planStartAligned.getTime() / msPerDay) * msPerDay;
+  const goalDay = Math.trunc(goalDateObj.getTime() / msPerDay) * msPerDay;
+  const weeksTotal = Math.max(1, Math.ceil((goalDay - planStartDay) / msPerWeek));
   const taperWks = TAPER_WEEKS[goal_race];
   const minWks = MIN_WEEKS[goal_race][level];
   const shortRunwayWarning = weeksTotal < minWks
@@ -710,8 +717,8 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
   volumes = capped.volumes;
   const deloadFlags = deloadFlagsForPhases(phases);
 
-  // 6. Plan start date
-  const planStart = nextMonday(today);
+  // 6. Plan start date (already computed and aligned above)
+  const planStart = planStartAligned;
 
   // 7. Build weeks
   let weeks = buildWeeksFromVolumes({
@@ -786,6 +793,43 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
       difficultyPreference,
       sessionMinutesCap: inputs.session_minutes_cap,
     });
+  }
+
+  // 7d. Insert race-day session on goal_date in the final week.
+  const goalIso = isoDate(goalDateObj);
+  const lastWeek = weeks[weeks.length - 1];
+  if (lastWeek) {
+    const raceGoalLabel: Record<GoalRace, string> = {
+      "5K": "5K", "10K": "10K", half: "Half Marathon", marathon: "Marathon",
+    };
+    const raceSession: PlannedSession = {
+      day_index: lastWeek.sessions.find((s) => s.date === goalIso)?.day_index
+        ?? ((lastWeek.sessions[lastWeek.sessions.length - 1]?.day_index ?? 6) + 1),
+      date: goalIso,
+      type: "race",
+      session_role: undefined,
+      recipe_id: null,
+      recipe_family: null,
+      stimulus: null,
+      target_km: null,
+      target_duration_min: null,
+      pace_low_s_km: null,
+      pace_high_s_km: null,
+      hr_zone: null,
+      target_rpe: null,
+      description: `Race day — ${raceGoalLabel[goal_race]}. Trust the taper. Warm up easy, run your goal pace, race smart.`,
+      rationale: "This is what the whole plan has been building toward. Your legs are fresh, the hay is in the barn. Run your race.",
+      warmup: "10–15 min very easy jog with 4×20 s strides.",
+      main_set: `${raceGoalLabel[goal_race]} — race at goal effort.`,
+      cooldown: "10 min easy walk/jog. Celebrate.",
+    };
+    // Replace an existing session on goal_date if present, otherwise push.
+    const existingIdx = lastWeek.sessions.findIndex((s) => s.date === goalIso);
+    if (existingIdx >= 0) {
+      lastWeek.sessions[existingIdx] = raceSession;
+    } else {
+      lastWeek.sessions.push(raceSession);
+    }
   }
 
   // 8. Validate

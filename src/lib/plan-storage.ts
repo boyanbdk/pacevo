@@ -183,6 +183,18 @@ export function getCompletedSession(planId: string, weekIndex: number, dayIndex:
   return plan?.completedSessions.findLast((s) => s.weekIndex === weekIndex && s.dayIndex === dayIndex);
 }
 
+export function removeCompletedSession(planId: string, weekIndex: number, dayIndex: number): void {
+  const plan = getPlan(planId);
+  if (!plan) return;
+  savePlan({
+    ...plan,
+    completedSessions: plan.completedSessions.filter(
+      (s) => !(s.weekIndex === weekIndex && s.dayIndex === dayIndex),
+    ),
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Workout feedback
 // ---------------------------------------------------------------------------

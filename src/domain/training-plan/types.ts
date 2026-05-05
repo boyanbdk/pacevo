@@ -23,7 +23,8 @@ export type SessionType =
   | "fartlek"
   | "hills"
   | "cross"
-  | "rest";
+  | "rest"
+  | "race";
 
 export interface RecentRace {
   distance_m: number;

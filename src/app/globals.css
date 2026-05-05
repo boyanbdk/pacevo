@@ -288,6 +288,10 @@ button {
   gap: 24px;
 }
 
+.sidebar-bottom-nav {
+  margin-top: auto;
+}
+
 .logo-row {
   display: flex;
   align-items: center;
@@ -1347,7 +1351,7 @@ button {
   background: rgba(255, 255, 255, 0.025);
   padding: 12px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.22s ease-out, border-color 0.22s ease-out;
 }
 
 .week-card.active {
@@ -1903,6 +1907,13 @@ button {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.45;
+}
+
+.import-match-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 /* ============================================================

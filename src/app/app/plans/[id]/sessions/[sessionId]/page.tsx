@@ -54,6 +54,7 @@ const SESSION_LABELS: Record<string, string> = {
   hills: "Hill session",
   cross: "Cross-training",
   rest: "Rest day",
+  race: "Race day",
 };
 
 const SESSION_COLORS: Record<string, string> = {
@@ -69,6 +70,7 @@ const SESSION_COLORS: Record<string, string> = {
   hills: "#e17055",
   cross: "#6c5ce7",
   rest: "var(--line)",
+  race: "#ffd700",
 };
 
 const PHASE_LABELS: Record<string, string> = {
@@ -80,6 +82,13 @@ const MODE_LABELS: { value: IntensityMode; label: string }[] = [
   { value: "rpe",  label: "RPE" },
   { value: "hr",   label: "Heart rate" },
 ];
+
+const EASY_SESSION_TYPES = new Set(["easy", "recovery", "long", "cross"]);
+// Strip derived pace parentheticals like "(5:17–6:18 /km)" from easy/recovery
+// main_set copy. Legacy plans may have been generated before this rule was enforced.
+function stripEasyPaceParenthetical(text: string): string {
+  return text.replace(/\s*\(\d+:\d+[–—-]\d+:\d+ \/km\)/g, "");
+}
 
 const DISLIKE_REASONS: { value: WorkoutFeedbackReason; label: string }[] = [
   { value: "too_hard", label: "Too hard" },
@@ -724,7 +733,11 @@ export default function SessionDetailPage() {
             {session.main_set && (
               <div className="session-block main">
                 <span className="session-block-label">Main set</span>
-                <p>{session.main_set}</p>
+                <p>
+                  {EASY_SESSION_TYPES.has(session.type) && !showEasyRunPaceTargets
+                    ? stripEasyPaceParenthetical(session.main_set)
+                    : session.main_set}
+                </p>
               </div>
             )}
             {session.cooldown && (

@@ -11,7 +11,7 @@ import type { TrainingWeek } from "@/domain/training-plan/types";
 import { planSettingsSummary } from "@/lib/plan-display";
 import { formatShortPlanDate, formatWeekRange, formatWeekdayDate, parsePlanDate } from "@/lib/plan-dates";
 import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
-import { applyAdaptation, getPlan, getWorkoutPreferences, logSession, updatePlanStatus } from "@/lib/plan-storage";
+import { applyAdaptation, getPlan, getWorkoutPreferences, logSession, removeCompletedSession, updatePlanStatus } from "@/lib/plan-storage";
 import { exportPlanDocx, exportPlanPdf, exportPlanWeekImage } from "@/lib/export";
 import { getSettings } from "@/lib/storage";
 import type { UserSettings } from "@/domain/workout-schema";
@@ -33,6 +33,7 @@ const SESSION_COLORS: Record<string, string> = {
   hills: "#e17055",
   cross: "#6c5ce7",
   rest: "var(--line)",
+  race: "#ffd700",
 };
 
 const SESSION_LABELS: Record<string, string> = {
@@ -48,6 +49,7 @@ const SESSION_LABELS: Record<string, string> = {
   hills: "Hills",
   cross: "Cross",
   rest: "Rest",
+  race: "Race Day",
 };
 
 const PHASE_LABELS: Record<string, string> = {
@@ -134,6 +136,22 @@ function matchStatusClass(status: ActivityMatch["status"]): string {
   return "";
 }
 
+// Build a flat list of all non-rest sessions across a plan for the change picker.
+function allPlanSessions(plan: SavedPlan): { weekIndex: number; dayIndex: number; label: string }[] {
+  const out: { weekIndex: number; dayIndex: number; label: string }[] = [];
+  for (let wi = 0; wi < plan.plan.weeks.length; wi++) {
+    for (const s of plan.plan.weeks[wi].sessions) {
+      if (s.type === "rest") continue;
+      out.push({
+        weekIndex: wi,
+        dayIndex: s.day_index,
+        label: `Week ${wi + 1} · ${formatWeekdayDate(s.date)} · ${SESSION_LABELS[s.type] ?? s.type}${s.target_km ? ` · ${s.target_km.toFixed(1)} km` : ""}`,
+      });
+    }
+  }
+  return out;
+}
+
 function ImportedActivityPanel({
   plan,
   onPlanChanged,
@@ -143,6 +161,8 @@ function ImportedActivityPanel({
 }) {
   const [activities, setActivities] = useState<ImportedActivity[]>([]);
   const [matches, setMatches] = useState<ActivityMatch[]>([]);
+  // Override mapping: activityId → { weekIndex, dayIndex } chosen by user
+  const [overrides, setOverrides] = useState<Record<string, { weekIndex: number; dayIndex: number } | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -155,6 +175,7 @@ function ImportedActivityPanel({
     if (!files || files.length === 0) return;
     setError(null);
     setMessage(null);
+    setOverrides({});
     try {
       const parsed: ImportedActivity[] = [];
       for (const file of Array.from(files)) {
@@ -173,14 +194,24 @@ function ImportedActivityPanel({
     }
   }
 
+  function resolvedTarget(match: ActivityMatch): { weekIndex: number; dayIndex: number } | null {
+    const ov = overrides[match.activity.id];
+    if (ov !== undefined) return ov;
+    if (match.weekIndex !== null && match.dayIndex !== null) {
+      return { weekIndex: match.weekIndex, dayIndex: match.dayIndex };
+    }
+    return null;
+  }
+
   function applySingleImport(match: ActivityMatch): SavedPlan | null {
-    if (match.weekIndex === null || match.dayIndex === null) return null;
-    const session = plan.plan.weeks[match.weekIndex]?.sessions.find((s) => s.day_index === match.dayIndex);
+    const target = resolvedTarget(match);
+    if (!target) return null;
+    const session = plan.plan.weeks[target.weekIndex]?.sessions.find((s) => s.day_index === target.dayIndex);
     if (!session) return null;
 
     logSession(plan.id, {
-      weekIndex: match.weekIndex,
-      dayIndex: match.dayIndex,
+      weekIndex: target.weekIndex,
+      dayIndex: target.dayIndex,
       date: session.date,
       actualKm: match.activity.distanceKm,
       actualDurationMin: match.activity.durationMin,
@@ -213,27 +244,66 @@ function ImportedActivityPanel({
     return refreshed;
   }
 
-  function importMatches(status: "auto" | "suggestion", selectedMatch?: ActivityMatch) {
-    const selected = selectedMatch ? [selectedMatch] : matches.filter((match) => match.status === status);
-    if (selected.length === 0) return;
+  function importMatch(match: ActivityMatch) {
     setImporting(true);
     setMessage(null);
     try {
-      let updated: SavedPlan | null = null;
-      for (const match of selected) {
-        updated = applySingleImport(match) ?? updated;
-      }
+      const updated = applySingleImport(match);
       if (updated) {
         onPlanChanged(updated);
         refreshMatches(updated);
-        setMessage(`${selected.length} activit${selected.length === 1 ? "y" : "ies"} imported.`);
+        setMessage("Activity imported.");
       }
     } finally {
       setImporting(false);
     }
   }
 
-  const autoCount = matches.filter((match) => match.status === "auto").length;
+  function importAllReady() {
+    const ready = matches.filter((m) => {
+      if (m.status === "duplicate" || m.status === "unmatched") {
+        return overrides[m.activity.id] !== undefined && overrides[m.activity.id] !== null;
+      }
+      return m.status === "auto" || m.status === "suggestion";
+    });
+    if (ready.length === 0) return;
+    setImporting(true);
+    setMessage(null);
+    try {
+      let updated: SavedPlan | null = null;
+      for (const match of ready) {
+        updated = applySingleImport(match) ?? updated;
+      }
+      if (updated) {
+        onPlanChanged(updated);
+        refreshMatches(updated);
+        setMessage(`${ready.length} activit${ready.length === 1 ? "y" : "ies"} imported.`);
+      }
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  function handleUnlink(match: ActivityMatch) {
+    if (match.weekIndex === null || match.dayIndex === null) return;
+    removeCompletedSession(plan.id, match.weekIndex, match.dayIndex);
+    const refreshed = getPlan(plan.id)!;
+    onPlanChanged(refreshed);
+    refreshMatches(refreshed);
+    setMessage("Activity unlinked.");
+  }
+
+  function handleOverrideChange(match: ActivityMatch, value: string) {
+    if (value === "") {
+      setOverrides((prev) => ({ ...prev, [match.activity.id]: null }));
+      return;
+    }
+    const [wi, di] = value.split(":").map(Number);
+    setOverrides((prev) => ({ ...prev, [match.activity.id]: { weekIndex: wi, dayIndex: di } }));
+  }
+
+  const allSessions = allPlanSessions(plan);
+  const autoCount = matches.filter((m) => m.status === "auto").length;
 
   return (
     <div className="import-panel">
@@ -266,7 +336,7 @@ function ImportedActivityPanel({
               className="button primary"
               disabled={autoCount === 0 || importing}
               type="button"
-              onClick={() => importMatches("auto")}
+              onClick={importAllReady}
             >
               Import ready matches
             </button>
@@ -274,9 +344,12 @@ function ImportedActivityPanel({
 
           <div className="import-match-list">
             {matches.map((match) => {
-              const session = match.weekIndex === null || match.dayIndex === null
-                ? null
-                : plan.plan.weeks[match.weekIndex]?.sessions.find((s) => s.day_index === match.dayIndex);
+              const target = resolvedTarget(match);
+              const session = target
+                ? plan.plan.weeks[target.weekIndex]?.sessions.find((s) => s.day_index === target.dayIndex)
+                : null;
+              const override = overrides[match.activity.id];
+              const canImport = (match.status === "auto" || match.status === "suggestion" || override != null) && match.status !== "duplicate";
               return (
                 <div key={match.activity.id} className="import-match-row">
                   <div className="import-match-main">
@@ -292,32 +365,47 @@ function ImportedActivityPanel({
                     </div>
                     {session && (
                       <div className="import-match-target">
-                        Week {match.weekIndex! + 1} · {formatWeekdayDate(session.date)} · {SESSION_LABELS[session.type]}
+                        Week {target!.weekIndex + 1} · {formatWeekdayDate(session.date)} · {SESSION_LABELS[session.type] ?? session.type}
                         {session.target_km ? ` · ${session.target_km.toFixed(1)} km planned` : ""}
                       </div>
                     )}
-                    <p>{match.reason}</p>
+                    <p className="muted" style={{ fontSize: 12, marginBottom: 6 }}>{match.reason}</p>
+                    {/* Session picker — lets user choose a different target session */}
+                    <select
+                      className="select"
+                      style={{ fontSize: 12 }}
+                      value={override != null ? `${override.weekIndex}:${override.dayIndex}` : (target ? `${target.weekIndex}:${target.dayIndex}` : "")}
+                      onChange={(e) => handleOverrideChange(match, e.target.value)}
+                    >
+                      {!target && <option value="">— choose session —</option>}
+                      {allSessions.map((s) => (
+                        <option key={`${s.weekIndex}:${s.dayIndex}`} value={`${s.weekIndex}:${s.dayIndex}`}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  {match.status === "suggestion" && (
-                    <button
-                      className="button ghost"
-                      disabled={importing}
-                      type="button"
-                      onClick={() => importMatches("suggestion", match)}
-                    >
-                      Import
-                    </button>
-                  )}
-                  {match.status === "auto" && (
-                    <button
-                      className="button ghost"
-                      disabled={importing}
-                      type="button"
-                      onClick={() => importMatches("auto", match)}
-                    >
-                      Import
-                    </button>
-                  )}
+                  <div className="import-match-actions">
+                    {match.status === "duplicate" ? (
+                      <button
+                        className="button ghost"
+                        disabled={importing}
+                        type="button"
+                        onClick={() => handleUnlink(match)}
+                      >
+                        Unlink
+                      </button>
+                    ) : (
+                      <button
+                        className="button ghost"
+                        disabled={importing || !canImport}
+                        type="button"
+                        onClick={() => importMatch(match)}
+                      >
+                        Import
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -802,6 +890,7 @@ export default function PlanDetailPage() {
   const weekSectionRefs = useRef<Record<number, HTMLElement | null>>({});
   const mobileWeekRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const initialScrollDone = useRef(false);
+  const weekIndexDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const p = getPlan(id);
@@ -824,15 +913,20 @@ export default function PlanDetailPage() {
 
   useEffect(() => {
     if (!plan || tab !== "plan") return;
+    const pendingIndex = { current: -1 };
     const observer = new IntersectionObserver(
       (entries) => {
         const visible = entries
           .filter((entry) => entry.isIntersecting)
           .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
         const nextIndex = Number((visible?.target as HTMLElement | undefined)?.dataset.weekIndex);
-        if (Number.isInteger(nextIndex)) {
-          setWeekIndex(nextIndex);
-        }
+        if (!Number.isInteger(nextIndex)) return;
+        pendingIndex.current = nextIndex;
+        if (weekIndexDebounceRef.current !== null) clearTimeout(weekIndexDebounceRef.current);
+        weekIndexDebounceRef.current = setTimeout(() => {
+          weekIndexDebounceRef.current = null;
+          setWeekIndex(pendingIndex.current);
+        }, 180);
       },
       { rootMargin: "-20% 0px -55% 0px", threshold: [0.2, 0.45, 0.7] },
     );

@@ -337,9 +337,10 @@ test("output is deterministic", () => {
 
 test("generated run sessions carry recipe metadata", () => {
   const plan = buildPlan(INTERMEDIATE_HALF);
+  // race sessions are injected directly (no recipe); exclude them from recipe invariants
   const runSessions = plan.weeks
     .flatMap(w => w.sessions)
-    .filter(s => s.type !== "rest");
+    .filter(s => s.type !== "rest" && s.type !== "race");
 
   expect(runSessions.length).toBeGreaterThan(0);
   for (const session of runSessions) {
@@ -353,7 +354,7 @@ test("generated session content stays aligned with recipe metadata", () => {
   const plan = buildPlan(INTERMEDIATE_HALF);
   const runSessions = plan.weeks
     .flatMap(w => w.sessions)
-    .filter(s => s.type !== "rest");
+    .filter(s => s.type !== "rest" && s.type !== "race");
 
   for (const session of runSessions) {
     const recipe = getRecipeById(session.recipe_id!);
@@ -406,7 +407,7 @@ test.each(
   assertPlanInvariants(plan, goalRace, level);
   expect(plan.meta.weeks_total).toBeGreaterThanOrEqual(4);
 
-  const runSessions = plan.weeks.flatMap((week) => week.sessions).filter((session) => session.type !== "rest");
+  const runSessions = plan.weeks.flatMap((week) => week.sessions).filter((session) => session.type !== "rest" && session.type !== "race");
   expect(runSessions.length).toBeGreaterThan(0);
   expect(runSessions.every((session) => session.recipe_id && session.recipe_family && session.stimulus)).toBe(true);
 });

@@ -49,6 +49,7 @@ export const RECOMMENDED_MODE: Record<SessionType, IntensityMode> = {
   repetition:    "pace",
   cross:         "hr",
   rest:          "rpe",
+  race:          "pace",
 };
 
 // Session types where HR lags enough that using it as primary is misleading.
