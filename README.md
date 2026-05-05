@@ -42,6 +42,8 @@ https://your-app.example.com/api/integrations/strava/webhook
 
 Connect Strava from `/app/settings`. New Strava activity webhook events are stored server-side, and the plan import panel can load those runs with “Load Strava runs” and match them against planned sessions.
 
+Login and registration also use the database once these env vars are configured. Passwords are hashed server-side, and browser access is controlled by an HttpOnly session cookie.
+
 Current limitation: plans are still stored locally in the browser, so the webhook stores activities automatically, but applying them to a plan still happens when the app loads Strava runs into the existing matcher. The next backend migration should move `SavedPlan` records into Postgres so webhook processing can mark sessions completed without a browser round trip.
 
 ### Planning Docs

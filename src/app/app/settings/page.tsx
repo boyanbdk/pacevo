@@ -4,7 +4,7 @@ import { Activity, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { UserSettings } from "@/domain/workout-schema";
-import { getSettings, getUser, saveSettings } from "@/lib/storage";
+import { getSettings, saveSettings } from "@/lib/storage";
 
 export default function SettingsPage() {
   const searchParams = useSearchParams();
@@ -23,9 +23,7 @@ export default function SettingsPage() {
   }
 
   function connectStrava() {
-    const user = getUser();
-    if (!user) return;
-    window.location.href = `/api/integrations/strava/connect?email=${encodeURIComponent(user.email)}`;
+    window.location.href = "/api/integrations/strava/connect";
   }
 
   return (

@@ -24,8 +24,8 @@ export function getUser(): LocalUser | null {
   return readJson<LocalUser | null>(userKey, null);
 }
 
-export function saveUser(email: string): LocalUser {
-  const user = { email, createdAt: new Date().toISOString() };
+export function saveUser(email: string, createdAt = new Date().toISOString()): LocalUser {
+  const user = { email, createdAt };
   localStorage.setItem(userKey, JSON.stringify(user));
   return user;
 }

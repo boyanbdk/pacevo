@@ -5,8 +5,19 @@ type QueryValue = string | number | boolean | null;
 export type AppUserRow = {
   id: string;
   email: string;
+  password_hash: string | null;
+  password_salt: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type AuthSessionRow = {
+  id: string;
+  user_id: string;
+  token_hash: string;
+  expires_at: string;
+  revoked_at: string | null;
+  created_at: string;
 };
 
 export type ProviderConnectionRow = {
@@ -111,4 +122,3 @@ export async function selectRows<T>(
 ): Promise<T[]> {
   return request<T[]>(table, { method: "GET" }, query);
 }
-

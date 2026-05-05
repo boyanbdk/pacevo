@@ -4,19 +4,29 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BRAND_ASSETS, BRAND_MOTTO, BRAND_NAME } from "@/lib/brand";
-import { saveUser } from "@/lib/storage";
+import { submitAuth } from "@/lib/auth-client";
 
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const isRegister = mode === "register";
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!email || !password) return;
-    saveUser(email);
-    router.push("/app");
+    setError(null);
+    setSubmitting(true);
+    try {
+      await submitAuth(mode, email, password);
+      router.push("/app");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Authentication failed.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -49,7 +59,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         <form className="form-panel form-grid" onSubmit={submit}>
           <div>
             <h2>{isRegister ? "Create account" : "Log in"}</h2>
-            <p className="muted">Local account storage keeps your training workspace on this device.</p>
+            <p className="muted">Your account is checked against the app database.</p>
           </div>
           <div className="field">
             <label htmlFor="email">Email</label>
@@ -59,7 +69,8 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
             <label htmlFor="password">Password</label>
             <input className="input" id="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
           </div>
-          <button className="button primary" type="submit">
+          {error && <div className="plan-warn">{error}</div>}
+          <button className="button primary" type="submit" disabled={submitting}>
             {isRegister ? "Create account" : "Log in"}
           </button>
           <p className="muted">

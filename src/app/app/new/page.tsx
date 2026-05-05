@@ -8,6 +8,7 @@ import { WORKOUT_RECIPES } from "@/domain/training-plan/workout-recipes";
 import { pacesFromVdot } from "@/domain/training-plan/vdot";
 import type { Level, PlannedSession, RecipeSessionType, WorkoutContext } from "@/domain/training-plan/types";
 import type { AdjustedStep, AdjustedWorkout, SavedWorkout, TailoringInputs, WorkoutAdjustment } from "@/domain/workout-schema";
+import { BRAND_NAME } from "@/lib/brand";
 import { saveWorkout } from "@/lib/storage";
 
 // ---------------------------------------------------------------------------
@@ -274,8 +275,8 @@ export default function NewWorkoutPage() {
     <>
       <div className="page-header">
         <div className="page-title">
-          <h1>New workout</h1>
-          <p>Choose a workout type and duration to see matching options for today.</p>
+          <h1>Build workout</h1>
+          <p>Choose a workout type and duration. {BRAND_NAME} will suggest sessions that fit today.</p>
         </div>
       </div>
 
@@ -337,7 +338,7 @@ export default function NewWorkoutPage() {
               disabled={!ready}
               onClick={find}
             >
-              Find workouts
+              Suggest workouts
             </button>
           </section>
         </div>
@@ -345,12 +346,12 @@ export default function NewWorkoutPage() {
         <div className="stack">
           {candidates === null && (
             <div className="panel empty">
-              <p>Choose a type and duration, then tap Find workouts to see options.</p>
+              <p>Choose a type and duration, then let {BRAND_NAME} suggest options.</p>
             </div>
           )}
           {candidates !== null && candidates.length === 0 && (
             <div className="panel empty">
-              <p>No matching workouts for this combination. Try a different type or level.</p>
+              <p>{BRAND_NAME} could not find matching workouts for this combination. Try a different type or level.</p>
             </div>
           )}
           {candidates !== null && candidates.map((session, i) => (

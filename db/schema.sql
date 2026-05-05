@@ -6,8 +6,25 @@ create extension if not exists pgcrypto;
 create table if not exists app_users (
   id uuid primary key default gen_random_uuid(),
   email text not null unique,
+  password_hash text,
+  password_salt text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+alter table app_users
+  add column if not exists password_hash text;
+
+alter table app_users
+  add column if not exists password_salt text;
+
+create table if not exists auth_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references app_users(id) on delete cascade,
+  token_hash text not null unique,
+  expires_at timestamptz not null,
+  revoked_at timestamptz,
+  created_at timestamptz not null default now()
 );
 
 create table if not exists provider_connections (
@@ -67,3 +84,6 @@ create index if not exists provider_activities_user_date_idx
 create index if not exists provider_connections_provider_user_idx
   on provider_connections (provider, provider_user_id);
 
+create index if not exists auth_sessions_token_hash_idx
+  on auth_sessions (token_hash)
+  where revoked_at is null;

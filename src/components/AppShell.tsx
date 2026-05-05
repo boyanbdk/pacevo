@@ -4,7 +4,7 @@ import { Activity, CalendarRange, Home, LogOut, Plus, RefreshCw, Settings } from
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { BRAND_ASSETS, BRAND_NAME } from "@/lib/brand";
-import { clearUser } from "@/lib/storage";
+import { signOut as signOutSession } from "@/lib/auth-client";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -16,8 +16,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     { href: "/app/plans", label: "Plans", icon: CalendarRange },
   ];
 
-  function signOut() {
-    clearUser();
+  async function signOut() {
+    await signOutSession();
     router.push("/login");
   }
 

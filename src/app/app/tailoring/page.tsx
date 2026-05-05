@@ -11,6 +11,7 @@ import { tailorWorkout } from "@/domain/run-tailor";
 import type { PlannedSession } from "@/domain/training-plan/types";
 import type { AdjustedWorkout, DisplayStyle, ParsedWorkout, PlannedSessionLink, SavedWorkout, TailoringInputs, WorkoutAdjustment } from "@/domain/workout-schema";
 import { DEMO_WORKOUTS } from "@/lib/demo-workouts";
+import { BRAND_NAME } from "@/lib/brand";
 import { formatWeekdayDate, parsePlanDate } from "@/lib/plan-dates";
 import type { SavedPlan } from "@/lib/plan-storage";
 import { getPlans } from "@/lib/plan-storage";
@@ -197,8 +198,8 @@ export default function TailoringPage() {
     <>
       <div className="page-header">
         <div className="page-title">
-          <h1>Tailor workout</h1>
-          <p>Paste a workout or upload a screenshot, review extraction, then generate an adjusted plan for how you feel today.</p>
+          <h1>Adapt workout</h1>
+          <p>Paste a workout, upload a screenshot, or pick a planned session. {BRAND_NAME} adapts it to how you feel today.</p>
         </div>
       </div>
 
@@ -311,7 +312,7 @@ export default function TailoringPage() {
           )}
 
           <section className="panel stack">
-            <h2>3. Tailoring inputs</h2>
+            <h2>3. Adaptation inputs</h2>
             <div className="grid-2">
               <div className="field">
                 <label>Run context</label>
@@ -371,7 +372,7 @@ export default function TailoringPage() {
             </div>
             <button className="button primary" type="button" onClick={() => generate()}>
               <Sparkles size={17} />
-              Generate adjusted workout
+              Generate adapted workout
             </button>
           </section>
         </div>

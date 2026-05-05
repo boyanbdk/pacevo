@@ -3,11 +3,12 @@ import {
   selectRows,
   upsertRows,
   type AppUserRow,
+  type AuthSessionRow,
   type ProviderActivityRow,
   type ProviderConnectionRow,
 } from "./supabase-rest";
 
-export type { ProviderConnectionRow } from "./supabase-rest";
+export type { AppUserRow, AuthSessionRow, ProviderConnectionRow } from "./supabase-rest";
 
 export type StravaConnectionInput = {
   userId: string;
@@ -46,12 +47,72 @@ export async function findOrCreateUserByEmail(email: string): Promise<AppUserRow
   return user as AppUserRow;
 }
 
+export async function getUserByEmail(email: string): Promise<AppUserRow | null> {
+  const [user] = await selectRows<AppUserRow>("app_users", {
+    email: `eq.${email.trim().toLowerCase()}`,
+    limit: 1,
+  });
+  return user ?? null;
+}
+
+export async function updateUserPassword(
+  userId: string,
+  passwordHash: string,
+  passwordSalt: string,
+): Promise<AppUserRow> {
+  const [user] = await patchRows<AppUserRow>(
+    "app_users",
+    {
+      password_hash: passwordHash,
+      password_salt: passwordSalt,
+      updated_at: new Date().toISOString(),
+    },
+    { id: `eq.${userId}` },
+  );
+  return user;
+}
+
 export async function getUserById(id: string): Promise<AppUserRow | null> {
   const [user] = await selectRows<AppUserRow>("app_users", {
     id: `eq.${id}`,
     limit: 1,
   });
   return user ?? null;
+}
+
+export async function createAuthSession(input: {
+  userId: string;
+  tokenHash: string;
+  expiresAt: string;
+}): Promise<AuthSessionRow> {
+  const [session] = await upsertRows(
+    "auth_sessions",
+    [{
+      user_id: input.userId,
+      token_hash: input.tokenHash,
+      expires_at: input.expiresAt,
+    }],
+    { onConflict: "token_hash" },
+  );
+  return session as AuthSessionRow;
+}
+
+export async function getActiveAuthSession(tokenHash: string): Promise<AuthSessionRow | null> {
+  const [session] = await selectRows<AuthSessionRow>("auth_sessions", {
+    token_hash: `eq.${tokenHash}`,
+    revoked_at: "is.null",
+    expires_at: `gt.${new Date().toISOString()}`,
+    limit: 1,
+  });
+  return session ?? null;
+}
+
+export async function revokeAuthSession(tokenHash: string): Promise<void> {
+  await patchRows(
+    "auth_sessions",
+    { revoked_at: new Date().toISOString() },
+    { token_hash: `eq.${tokenHash}` },
+  );
 }
 
 export async function upsertStravaConnection(input: StravaConnectionInput): Promise<ProviderConnectionRow> {

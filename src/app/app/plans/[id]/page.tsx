@@ -13,7 +13,7 @@ import { formatShortPlanDate, formatWeekRange, formatWeekdayDate, parsePlanDate 
 import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
 import { applyAdaptation, getPlan, getWorkoutPreferences, logSession, removeCompletedSession, updatePlanStatus } from "@/lib/plan-storage";
 import { exportPlanDocx, exportPlanPdf, exportPlanWeekImage } from "@/lib/export";
-import { getSettings, getUser } from "@/lib/storage";
+import { getSettings } from "@/lib/storage";
 import type { UserSettings } from "@/domain/workout-schema";
 
 // ---------------------------------------------------------------------------
@@ -195,17 +195,11 @@ function ImportedActivityPanel({
   }
 
   async function loadStravaActivities() {
-    const user = getUser();
-    if (!user) {
-      setError("Log in before loading Strava activities.");
-      return;
-    }
-
     setError(null);
     setMessage(null);
     setImporting(true);
     try {
-      const response = await fetch(`/api/integrations/strava/activities?sync=1&email=${encodeURIComponent(user.email)}`);
+      const response = await fetch("/api/integrations/strava/activities?sync=1");
       const payload = await response.json() as {
         connected?: boolean;
         synced?: number;
