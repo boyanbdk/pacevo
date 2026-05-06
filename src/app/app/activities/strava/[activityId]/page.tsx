@@ -4,9 +4,15 @@ import { AlertCircle, ArrowLeft, CalendarDays, Clock, Heart, MapPin, Route, Time
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { matchImportedActivities, type ActivityMatch } from "@/domain/training-plan/activity-import";
 import type { StravaActivityDetailPayload } from "@/lib/server/strava-activity-payload";
 import { getPlans, type SavedPlan } from "@/lib/plan-storage";
 import { formatFullPlanDate } from "@/lib/plan-dates";
+import {
+  importActivityIntoPlan,
+  markStravaActivityImported,
+  targetFromActivityMatch,
+} from "@/lib/activity-plan-import";
 
 type ActivityDetailState =
   | { status: "loading"; activity: null; error: null }
@@ -25,7 +31,17 @@ function formatMinutes(value: number | null | undefined): string {
   return value ? `${Math.round(value)} min` : "—";
 }
 
-function findPlanLink(activity: StravaActivityDetailPayload, plans: SavedPlan[]): { href: string; label: string } | null {
+type LinkedSession = {
+  href: string;
+  label: string;
+};
+
+type ImportCandidate = {
+  plan: SavedPlan;
+  match: ActivityMatch;
+};
+
+function findLinkedSession(activity: StravaActivityDetailPayload, plans: SavedPlan[]): LinkedSession | null {
   for (const plan of plans.filter((candidate) => candidate.status === "active")) {
     const completed = plan.completedSessions.find(
       (session) =>
@@ -48,14 +64,24 @@ function findPlanLink(activity: StravaActivityDetailPayload, plans: SavedPlan[])
     }
   }
 
-  const active = plans.find((plan) => plan.status === "active");
-  return active ? { href: `/app/plans/${active.id}`, label: "Match to plan" } : null;
+  return null;
+}
+
+function importCandidateForActivePlan(activity: StravaActivityDetailPayload, plans: SavedPlan[]): ImportCandidate | null {
+  const plan = plans.find((candidate) => candidate.status === "active");
+  if (!plan) return null;
+  const [match] = matchImportedActivities(plan.plan, [activity], plan.completedSessions);
+  if (!match || match.status === "duplicate" || match.status === "unmatched") return null;
+  return { plan, match };
 }
 
 export default function StravaActivityDetailPage() {
   const { activityId } = useParams<{ activityId: string }>();
   const [state, setState] = useState<ActivityDetailState>({ status: "loading", activity: null, error: null });
   const [plans, setPlans] = useState<SavedPlan[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setPlans(getPlans());
@@ -92,10 +118,34 @@ export default function StravaActivityDetailPage() {
     };
   }, [activityId]);
 
-  const planLink = useMemo(
-    () => state.activity ? findPlanLink(state.activity, plans) : null,
+  const linkedSession = useMemo(
+    () => state.activity ? findLinkedSession(state.activity, plans) : null,
     [plans, state.activity],
   );
+  const importCandidate = useMemo(
+    () => state.activity && !linkedSession ? importCandidateForActivePlan(state.activity, plans) : null,
+    [linkedSession, plans, state.activity],
+  );
+
+  async function importToPlan() {
+    if (!state.activity || !importCandidate) return;
+    const target = targetFromActivityMatch(importCandidate.match);
+    if (!target) return;
+
+    setImporting(true);
+    setActionError(null);
+    setMessage(null);
+    try {
+      const updated = importActivityIntoPlan(importCandidate.plan, state.activity, target);
+      setPlans((prev) => prev.map((plan) => plan.id === updated.id ? updated : plan));
+      await markStravaActivityImported(state.activity, true);
+      setMessage("Activity imported.");
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Activity imported locally, but Strava status could not be updated.");
+    } finally {
+      setImporting(false);
+    }
+  }
 
   if (state.status === "loading") {
     return (
@@ -134,13 +184,29 @@ export default function StravaActivityDetailPage() {
           <p>{formatFullPlanDate(activity.date)} · Strava {activity.sportType ?? "activity"}</p>
         </div>
         <div className="button-row">
-          {planLink && (
-            <Link className="button primary" href={planLink.href}>
-              {planLink.label}
+          {linkedSession && (
+            <Link className="button primary" href={linkedSession.href}>
+              {linkedSession.label}
+            </Link>
+          )}
+          {!linkedSession && importCandidate && (
+            <button className="button primary" type="button" onClick={importToPlan} disabled={importing}>
+              {importing ? "Importing..." : "Import to plan"}
+            </button>
+          )}
+          {!linkedSession && !importCandidate && plans.find((plan) => plan.status === "active") && (
+            <Link className="button primary" href={`/app/plans/${plans.find((plan) => plan.status === "active")!.id}`}>
+              Match in plan
             </Link>
           )}
         </div>
       </div>
+
+      {(message || actionError) && (
+        <div className={actionError ? "plan-warn" : "adapt-banner"} style={{ marginBottom: 0 }}>
+          {actionError ?? message}
+        </div>
+      )}
 
       <section className="activity-hero panel">
         <div>

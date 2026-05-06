@@ -4,15 +4,15 @@ import { Archive, ArrowLeft, CalendarDays, ChevronRight, Download, FileImage, Fi
 import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { runAdaptations } from "@/domain/training-plan/adapt-plan";
 import { matchImportedActivities, parseActivityFile, type ActivityMatch, type ImportedActivity } from "@/domain/training-plan/activity-import";
 import { splitPlanWarnings } from "@/domain/training-plan/warnings";
 import type { TrainingWeek } from "@/domain/training-plan/types";
 import { planSettingsSummary } from "@/lib/plan-display";
 import { BRAND_EXPORT_LABEL, BRAND_NAME } from "@/lib/brand";
-import { formatShortPlanDate, formatWeekRange, formatWeekdayDate, parsePlanDate } from "@/lib/plan-dates";
+import { formatShortPlanDate, formatWeekRange, formatWeekdayDate } from "@/lib/plan-dates";
 import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
-import { applyAdaptation, getPlan, getWorkoutPreferences, logSession, removeCompletedSession, updatePlanStatus } from "@/lib/plan-storage";
+import { getPlan, removeCompletedSession, updatePlanStatus } from "@/lib/plan-storage";
+import { currentWeekIndexForPlan, importActivityIntoPlan, markStravaActivityImported } from "@/lib/activity-plan-import";
 import { exportPlanCsv, exportPlanDocx, exportPlanIcs, exportPlanJson, exportPlanPdf, exportPlanWeekCardImage, type PlanWeekImagePreset } from "@/lib/export";
 import { getSettings } from "@/lib/storage";
 import type { UserSettings } from "@/domain/workout-schema";
@@ -102,15 +102,6 @@ function countLoggedSessions(sessions: CompletedSession[], weekIndex?: number): 
   return keys.size;
 }
 
-function currentWeekIndexForPlan(plan: SavedPlan): number {
-  const today = new Date();
-  const startDate = parsePlanDate(plan.plan.meta.start_date);
-  return Math.min(
-    Math.max(0, Math.floor((today.getTime() - startDate.getTime()) / (7 * 86400000))),
-    plan.plan.weeks.length - 1,
-  );
-}
-
 function weekLabel(week: TrainingWeek): string {
   const tags = [];
   if (week.is_deload) tags.push("Deload");
@@ -151,26 +142,6 @@ function allPlanSessions(plan: SavedPlan): { weekIndex: number; dayIndex: number
     }
   }
   return out;
-}
-
-function providerActivityIdForImport(activity: ImportedActivity): string | null {
-  if (activity.source !== "strava") return null;
-  return activity.providerActivityId ?? activity.id.replace(/^strava:/, "");
-}
-
-async function markStravaActivityImported(activity: ImportedActivity, importedIntoPlan: boolean): Promise<void> {
-  const providerActivityId = providerActivityIdForImport(activity);
-  if (!providerActivityId) return;
-
-  const response = await fetch(`/api/integrations/strava/activities/${encodeURIComponent(providerActivityId)}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ importedIntoPlan }),
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({})) as { error?: string };
-    throw new Error(payload.error ?? "Could not update Strava import status.");
-  }
 }
 
 function ImportedActivityPanel({
@@ -272,43 +243,7 @@ function ImportedActivityPanel({
   function applySingleImport(match: ActivityMatch): SavedPlan | null {
     const target = resolvedTarget(match);
     if (!target) return null;
-    const session = plan.plan.weeks[target.weekIndex]?.sessions.find((s) => s.day_index === target.dayIndex);
-    if (!session) return null;
-
-    logSession(plan.id, {
-      weekIndex: target.weekIndex,
-      dayIndex: target.dayIndex,
-      date: session.date,
-      actualKm: match.activity.distanceKm,
-      actualDurationMin: match.activity.durationMin,
-      avgHR: match.activity.avgHR,
-      maxHR: match.activity.maxHR,
-      rpe: null,
-      note: `Imported from ${match.activity.fileName}`,
-      source: match.activity.source === "strava" ? "strava" : "file_import",
-      providerActivityId: providerActivityIdForImport(match.activity) ?? undefined,
-    });
-
-    let refreshed = getPlan(plan.id)!;
-    const result = runAdaptations(
-      refreshed.plan,
-      refreshed.completedSessions,
-      refreshed.inputs,
-      currentWeekIndexForPlan(refreshed),
-      getWorkoutPreferences(refreshed.id),
-      refreshed.inputs.days_per_week,
-    );
-
-    if (result) {
-      refreshed = applyAdaptation(plan.id, result.newPlan, {
-        rule: result.rule,
-        explanation: result.explanation,
-        triggeredBySessionIds: result.triggeredBySessionIds,
-        firedAt: new Date().toISOString(),
-      }).plan;
-    }
-
-    return refreshed;
+    return importActivityIntoPlan(plan, match.activity, target);
   }
 
   async function importMatch(match: ActivityMatch) {
