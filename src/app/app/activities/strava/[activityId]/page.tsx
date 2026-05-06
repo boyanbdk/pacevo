@@ -30,9 +30,15 @@ function findPlanLink(activity: StravaActivityDetailPayload, plans: SavedPlan[])
     const completed = plan.completedSessions.find(
       (session) =>
         session.source === "strava" &&
-        session.date === activity.date &&
-        session.actualKm !== null &&
-        Math.abs(session.actualKm - activity.distanceKm) < 0.02,
+        (
+          session.providerActivityId === activity.providerActivityId ||
+          (
+            !session.providerActivityId &&
+            session.date === activity.date &&
+            session.actualKm !== null &&
+            Math.abs(session.actualKm - activity.distanceKm) < 0.02
+          )
+        ),
     );
     if (completed) {
       return {

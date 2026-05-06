@@ -244,6 +244,26 @@ export async function getProviderActivityForUser(userId: string, providerActivit
   return activity ?? null;
 }
 
+export async function setProviderActivityImportedAt(
+  userId: string,
+  providerActivityId: string,
+  importedAt: string | null,
+): Promise<ProviderActivityRow | null> {
+  const [activity] = await patchRows<ProviderActivityRow>(
+    "provider_activities",
+    {
+      imported_into_plan_at: importedAt,
+      updated_at: new Date().toISOString(),
+    },
+    {
+      user_id: `eq.${userId}`,
+      provider: "eq.strava",
+      provider_activity_id: `eq.${providerActivityId}`,
+    },
+  );
+  return activity ?? null;
+}
+
 export async function recordWebhookEvent(input: {
   providerEventId: string;
   providerUserId: string | null;

@@ -25,6 +25,7 @@ export type CompletedSession = {
   rpe: number | null;
   note: string;
   source: "manual" | "file_import" | "strava";
+  providerActivityId?: string;
   createdAt: string;
 };
 

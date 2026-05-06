@@ -208,9 +208,29 @@ export function matchImportedActivities(
   completed: CompletedSession[],
 ): ActivityMatch[] {
   const completedKeys = new Set(completed.map((session) => completionKey(session.weekIndex, session.dayIndex)));
+  const completedByProviderActivityId = new Map(
+    completed
+      .filter((session) => session.source === "strava" && session.providerActivityId)
+      .map((session) => [session.providerActivityId!, session]),
+  );
   const sessions = plannedSessions(plan);
 
   return activities.map((activity) => {
+    const imported = activity.providerActivityId
+      ? completedByProviderActivityId.get(activity.providerActivityId)
+      : null;
+    if (imported) {
+      return {
+        activity,
+        status: "duplicate",
+        reason: "That Strava activity is already imported.",
+        weekIndex: imported.weekIndex,
+        dayIndex: imported.dayIndex,
+        dateDeltaDays: 0,
+        distanceDeltaKm: null,
+      };
+    }
+
     const ranked = sessions
       .map(({ weekIndex, session }) => {
         const dateDelta = Math.abs(daysBetween(activity.date, session.date));

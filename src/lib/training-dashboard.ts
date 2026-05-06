@@ -248,6 +248,11 @@ function stravaRouteId(activity: ImportedActivity): string {
 }
 
 export function stravaActivityItems(plan: SavedPlan, activities: ImportedActivity[]): ActivityItem[] {
+  const loggedProviderActivityIds = new Set(
+    plan.completedSessions
+      .filter((session) => session.source === "strava" && session.providerActivityId)
+      .map((session) => session.providerActivityId),
+  );
   const logged = new Set(
     plan.completedSessions
       .filter((session) => session.source === "strava")
@@ -255,7 +260,10 @@ export function stravaActivityItems(plan: SavedPlan, activities: ImportedActivit
   );
 
   return activities
-    .filter((activity) => !logged.has(`${activity.date}:${activity.distanceKm.toFixed(2)}`))
+    .filter((activity) => {
+      if (activity.providerActivityId && loggedProviderActivityIds.has(activity.providerActivityId)) return false;
+      return !logged.has(`${activity.date}:${activity.distanceKm.toFixed(2)}`);
+    })
     .map((activity) => ({
       id: activity.id,
       createdAt: activity.startedAt,

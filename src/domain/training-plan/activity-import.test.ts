@@ -160,3 +160,42 @@ test("already logged same-date sessions are marked as duplicates", () => {
 
   expect(match.status).toBe("duplicate");
 });
+
+test("already imported Strava provider activities are exact duplicates", () => {
+  const activity = {
+    id: "strava:999",
+    providerActivityId: "999",
+    source: "strava" as const,
+    fileName: "Strava",
+    name: "Morning run",
+    startedAt: "2026-05-08T06:00:00Z",
+    date: "2026-05-08",
+    distanceKm: 9,
+    durationMin: 45,
+    avgHR: null,
+    maxHR: null,
+  };
+  const completed: CompletedSession[] = [{
+    id: "existing",
+    planId: "plan",
+    weekIndex: 0,
+    dayIndex: 3,
+    date: "2026-05-07",
+    actualKm: 5,
+    actualDurationMin: 30,
+    avgHR: null,
+    maxHR: null,
+    rpe: null,
+    note: "",
+    source: "strava",
+    providerActivityId: "999",
+    createdAt: "2026-05-07T07:00:00Z",
+  }];
+
+  const [match] = matchImportedActivities(makePlan(), [activity], completed);
+
+  expect(match.status).toBe("duplicate");
+  expect(match.weekIndex).toBe(0);
+  expect(match.dayIndex).toBe(3);
+  expect(match.reason).toMatch(/already imported/i);
+});

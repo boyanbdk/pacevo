@@ -319,3 +319,40 @@ test("stravaActivityItems link to activity detail pages instead of the plan", ()
 
   expect(item.href).toBe("/app/activities/strava/12345");
 });
+
+test("stravaActivityItems hide activities already imported by provider id", () => {
+  const saved = plan({
+    completedSessions: [{
+      id: "done-1",
+      planId: "plan-1",
+      weekIndex: 0,
+      dayIndex: 1,
+      date: "2026-05-04",
+      actualKm: 5,
+      actualDurationMin: 30,
+      avgHR: null,
+      maxHR: null,
+      rpe: 4,
+      note: "",
+      source: "strava",
+      providerActivityId: "12345",
+      createdAt: "2026-05-04T10:00:00.000Z",
+    }],
+  });
+
+  const items = stravaActivityItems(saved, [{
+    id: "strava:12345",
+    providerActivityId: "12345",
+    source: "strava",
+    fileName: "Strava",
+    name: "Morning Run",
+    startedAt: "2026-05-07T06:00:00.000Z",
+    date: "2026-05-07",
+    distanceKm: 6.2,
+    durationMin: 34,
+    avgHR: 145,
+    maxHR: null,
+  }]);
+
+  expect(items).toEqual([]);
+});

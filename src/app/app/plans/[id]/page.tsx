@@ -153,6 +153,26 @@ function allPlanSessions(plan: SavedPlan): { weekIndex: number; dayIndex: number
   return out;
 }
 
+function providerActivityIdForImport(activity: ImportedActivity): string | null {
+  if (activity.source !== "strava") return null;
+  return activity.providerActivityId ?? activity.id.replace(/^strava:/, "");
+}
+
+async function markStravaActivityImported(activity: ImportedActivity, importedIntoPlan: boolean): Promise<void> {
+  const providerActivityId = providerActivityIdForImport(activity);
+  if (!providerActivityId) return;
+
+  const response = await fetch(`/api/integrations/strava/activities/${encodeURIComponent(providerActivityId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ importedIntoPlan }),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(payload.error ?? "Could not update Strava import status.");
+  }
+}
+
 function ImportedActivityPanel({
   plan,
   onPlanChanged,
@@ -266,6 +286,7 @@ function ImportedActivityPanel({
       rpe: null,
       note: `Imported from ${match.activity.fileName}`,
       source: match.activity.source === "strava" ? "strava" : "file_import",
+      providerActivityId: providerActivityIdForImport(match.activity) ?? undefined,
     });
 
     let refreshed = getPlan(plan.id)!;
@@ -290,22 +311,25 @@ function ImportedActivityPanel({
     return refreshed;
   }
 
-  function importMatch(match: ActivityMatch) {
+  async function importMatch(match: ActivityMatch) {
     setImporting(true);
     setMessage(null);
     try {
       const updated = applySingleImport(match);
       if (updated) {
+        await markStravaActivityImported(match.activity, true);
         onPlanChanged(updated);
         refreshMatches(updated);
         setMessage("Activity imported.");
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Activity imported locally, but Strava status could not be updated.");
     } finally {
       setImporting(false);
     }
   }
 
-  function importAllReady() {
+  async function importAllReady() {
     const ready = matches.filter((m) => {
       if (m.status === "duplicate" || m.status === "unmatched") {
         return overrides[m.activity.id] !== undefined && overrides[m.activity.id] !== null;
@@ -319,24 +343,33 @@ function ImportedActivityPanel({
       let updated: SavedPlan | null = null;
       for (const match of ready) {
         updated = applySingleImport(match) ?? updated;
+        await markStravaActivityImported(match.activity, true);
       }
       if (updated) {
         onPlanChanged(updated);
         refreshMatches(updated);
         setMessage(`${ready.length} activit${ready.length === 1 ? "y" : "ies"} imported.`);
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Activities imported locally, but Strava status could not be updated.");
     } finally {
       setImporting(false);
     }
   }
 
-  function handleUnlink(match: ActivityMatch) {
+  async function handleUnlink(match: ActivityMatch) {
     if (match.weekIndex === null || match.dayIndex === null) return;
     removeCompletedSession(plan.id, match.weekIndex, match.dayIndex);
-    const refreshed = getPlan(plan.id)!;
-    onPlanChanged(refreshed);
-    refreshMatches(refreshed);
-    setMessage("Activity unlinked.");
+    try {
+      await markStravaActivityImported(match.activity, false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Activity unlinked locally, but Strava status could not be updated.");
+    } finally {
+      const refreshed = getPlan(plan.id)!;
+      onPlanChanged(refreshed);
+      refreshMatches(refreshed);
+      setMessage("Activity unlinked.");
+    }
   }
 
   function handleOverrideChange(match: ActivityMatch, value: string) {
