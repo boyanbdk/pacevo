@@ -175,8 +175,12 @@ export async function exportPlanWeekCardImage(
   options?: PlanExportOptions,
   preset: PlanWeekImagePreset = "landscape",
 ) {
-  const model = buildPlanExportModel(plan, options);
-  const result = await renderPlanWeekCardPngBlob(model, weekIndex, preset);
+  const model = buildPlanExportModel(plan, {
+    ...options,
+    weekStartIndex: weekIndex,
+    weekEndIndex: weekIndex,
+  });
+  const result = await renderPlanWeekCardPngBlob(model, 0, preset);
   downloadBlob(result.blob, `${slugify(model.meta.goalRace)}-week-${result.weekNumber}-${result.preset}.png`);
 }
 

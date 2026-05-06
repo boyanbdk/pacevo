@@ -155,4 +155,37 @@ describe("plan export model", () => {
     expect(text).not.toContain("5:17");
     expect(text).not.toContain("/km easy");
   });
+
+  test("scopes exports to a selected week range", () => {
+    const model = buildPlanExportModel(PLAN, {
+      ...defaultSettings,
+      weekStartIndex: 1,
+      weekEndIndex: 1,
+    });
+
+    expect(model.weeks.map((week) => week.number)).toEqual([2]);
+    expect(model.meta.weeksTotal).toBe(1);
+    expect(model.meta.totalKm).toBe(38);
+    expect(model.meta.startDate).toBe("2026-05-11");
+  });
+
+  test("content toggles hide rest days, paces, HR zones, rationale, and warnings", () => {
+    const model = buildPlanExportModel(PLAN, {
+      ...defaultSettings,
+      includeRestDays: false,
+      includePaces: false,
+      includeHrZones: false,
+      includeRationale: false,
+      includeWarnings: false,
+    });
+
+    expect(model.weeks[0].sessions.map((session) => session.label)).toEqual(["Hills", "Easy"]);
+    expect(model.paceReference).toEqual([]);
+    expect(model.weeks[0].sessions[0]).toMatchObject({
+      pace: "",
+      hrZone: "",
+      rationale: "",
+    });
+    expect(model.warnings).toEqual([]);
+  });
 });

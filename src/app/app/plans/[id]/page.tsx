@@ -14,6 +14,7 @@ import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "
 import { getPlan, removeCompletedSession, updatePlanStatus } from "@/lib/plan-storage";
 import { currentWeekIndexForPlan, importActivityIntoPlan, markStravaActivityImported } from "@/lib/activity-plan-import";
 import { exportPlanCsv, exportPlanDocx, exportPlanIcs, exportPlanJson, exportPlanPdf, exportPlanWeekCardImage, type PlanWeekImagePreset } from "@/lib/export";
+import type { PlanExportOptions } from "@/lib/export-model";
 import { getSettings } from "@/lib/storage";
 import type { UserSettings } from "@/domain/workout-schema";
 
@@ -923,9 +924,51 @@ function PlanExportSheet({
   onClose: () => void;
 }) {
   const currentWeek = plan.plan.weeks[weekIndex];
+  const [scope, setScope] = useState<"all" | "current" | "range">("all");
+  const [rangeStart, setRangeStart] = useState(weekIndex);
+  const [rangeEnd, setRangeEnd] = useState(Math.min(plan.plan.weeks.length - 1, Math.max(weekIndex, weekIndex + 3)));
+  const [includeRestDays, setIncludeRestDays] = useState(true);
+  const [includePaces, setIncludePaces] = useState(true);
+  const [includeHrZones, setIncludeHrZones] = useState(true);
+  const [includeRationale, setIncludeRationale] = useState(true);
+  const [includeWarnings, setIncludeWarnings] = useState(true);
+  const start = Math.min(rangeStart, rangeEnd);
+  const end = Math.max(rangeStart, rangeEnd);
+  const scopedWeekCount = scope === "all" ? plan.plan.weeks.length : scope === "current" ? 1 : end - start + 1;
+
+  function exportOptions(scopeOverride = scope): PlanExportOptions {
+    const base: PlanExportOptions = {
+      ...settings,
+      includeRestDays,
+      includePaces,
+      includeHrZones,
+      includeRationale,
+      includeWarnings,
+    };
+    if (scopeOverride === "current") {
+      return { ...base, weekStartIndex: weekIndex, weekEndIndex: weekIndex };
+    }
+    if (scopeOverride === "range") {
+      return { ...base, weekStartIndex: start, weekEndIndex: end };
+    }
+    return base;
+  }
 
   function runExport(action: () => void | Promise<void>) {
     void Promise.resolve(action()).then(onClose);
+  }
+
+  function toggle(label: string, checked: boolean, onChange: (checked: boolean) => void) {
+    return (
+      <label className="export-toggle">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(event) => onChange(event.target.checked)}
+        />
+        <span>{label}</span>
+      </label>
+    );
   }
 
   return (
@@ -948,11 +991,68 @@ function PlanExportSheet({
         </div>
 
         <div className="why-sheet-section">
+          <span className="field-label">Scope</span>
+          <div className="export-scope-grid" role="group" aria-label="Export scope">
+            <button className={`export-scope-button ${scope === "all" ? "active" : ""}`} type="button" onClick={() => setScope("all")}>
+              <strong>All weeks</strong>
+              <span>{plan.plan.weeks.length} week plan</span>
+            </button>
+            <button className={`export-scope-button ${scope === "current" ? "active" : ""}`} type="button" onClick={() => setScope("current")}>
+              <strong>Current week</strong>
+              <span>Week {weekIndex + 1}</span>
+            </button>
+            <button className={`export-scope-button ${scope === "range" ? "active" : ""}`} type="button" onClick={() => setScope("range")}>
+              <strong>Week range</strong>
+              <span>{scopedWeekCount} week{scopedWeekCount === 1 ? "" : "s"}</span>
+            </button>
+          </div>
+          {scope === "range" && (
+            <div className="export-range-row">
+              <label>
+                <span className="field-label">From</span>
+                <select
+                  className="select"
+                  value={rangeStart}
+                  onChange={(event) => setRangeStart(Number(event.target.value))}
+                >
+                  {plan.plan.weeks.map((week, index) => (
+                    <option key={week.week_index} value={index}>Week {index + 1}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="field-label">To</span>
+                <select
+                  className="select"
+                  value={rangeEnd}
+                  onChange={(event) => setRangeEnd(Number(event.target.value))}
+                >
+                  {plan.plan.weeks.map((week, index) => (
+                    <option key={week.week_index} value={index}>Week {index + 1}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+        </div>
+
+        <div className="why-sheet-section">
+          <span className="field-label">Content</span>
+          <div className="export-toggle-grid">
+            {toggle("Rest days", includeRestDays, setIncludeRestDays)}
+            {toggle("Paces", includePaces, setIncludePaces)}
+            {toggle("HR zones", includeHrZones, setIncludeHrZones)}
+            {toggle("Rationale", includeRationale, setIncludeRationale)}
+            {toggle("Warnings", includeWarnings, setIncludeWarnings)}
+          </div>
+        </div>
+
+        <div className="why-sheet-section">
           <span className="field-label">Week image</span>
           <div className="export-option-row">
             <div>
               <strong>Week {weekIndex + 1} PNG</strong>
-              <span>{formatWeekRange(currentWeek)} · {currentWeek.total_km.toFixed(0)} km</span>
+              <span>{formatWeekRange(currentWeek)} · {currentWeek.total_km.toFixed(0)} km · current week</span>
             </div>
             <select
               className="select"
@@ -968,7 +1068,7 @@ function PlanExportSheet({
             <button
               className="button primary"
               type="button"
-              onClick={() => runExport(() => exportPlanWeekCardImage(plan.plan, weekIndex, settings, pngPreset))}
+              onClick={() => runExport(() => exportPlanWeekCardImage(plan.plan, weekIndex, exportOptions("current"), pngPreset))}
             >
               <FileImage size={16} />
               Export PNG
@@ -978,28 +1078,31 @@ function PlanExportSheet({
 
         <div className="why-sheet-section">
           <span className="field-label">Full plan documents</span>
+          <p className="muted export-summary">
+            {scope === "all" ? "All weeks" : scope === "current" ? `Week ${weekIndex + 1}` : `Weeks ${start + 1}-${end + 1}`} · {scopedWeekCount} week{scopedWeekCount === 1 ? "" : "s"}
+          </p>
           <div className="export-format-grid">
-            <button className="export-format-button" type="button" onClick={() => runExport(() => exportPlanPdf(plan.plan, settings))}>
+            <button className="export-format-button" type="button" onClick={() => runExport(() => exportPlanPdf(plan.plan, exportOptions()))}>
               <FileText size={18} />
               <strong>PDF</strong>
               <span>Designed plan document</span>
             </button>
-            <button className="export-format-button" type="button" onClick={() => runExport(() => exportPlanDocx(plan.plan, settings))}>
+            <button className="export-format-button" type="button" onClick={() => runExport(() => exportPlanDocx(plan.plan, exportOptions()))}>
               <Download size={18} />
               <strong>DOCX</strong>
               <span>Editable coach handoff</span>
             </button>
-            <button className="export-format-button" type="button" onClick={() => runExport(() => exportPlanCsv(plan.plan, settings))}>
+            <button className="export-format-button" type="button" onClick={() => runExport(() => exportPlanCsv(plan.plan, exportOptions()))}>
               <FileSpreadsheet size={18} />
               <strong>CSV</strong>
               <span>Session rows</span>
             </button>
-            <button className="export-format-button" type="button" onClick={() => runExport(() => exportPlanJson(plan.plan, settings))}>
+            <button className="export-format-button" type="button" onClick={() => runExport(() => exportPlanJson(plan.plan, exportOptions()))}>
               <FileJson size={18} />
               <strong>JSON</strong>
               <span>Structured export model</span>
             </button>
-            <button className="export-format-button" type="button" onClick={() => runExport(() => exportPlanIcs(plan.plan, settings))}>
+            <button className="export-format-button" type="button" onClick={() => runExport(() => exportPlanIcs(plan.plan, exportOptions()))}>
               <CalendarDays size={18} />
               <strong>ICS</strong>
               <span>Calendar events</span>

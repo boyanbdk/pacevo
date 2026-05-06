@@ -2102,7 +2102,72 @@ button {
 }
 
 .export-sheet {
-  width: min(620px, 100%);
+  width: min(680px, 100%);
+}
+
+.export-scope-grid,
+.export-toggle-grid,
+.export-range-row {
+  display: grid;
+  gap: 10px;
+}
+
+.export-scope-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.export-scope-button {
+  min-height: 74px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.035);
+  text-align: left;
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.export-scope-button.active {
+  border-color: rgba(40, 210, 174, 0.72);
+  background: rgba(40, 210, 174, 0.1);
+}
+
+.export-scope-button span,
+.export-summary {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.export-range-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.export-range-row label {
+  display: grid;
+  gap: 6px;
+}
+
+.export-toggle-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.export-toggle {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 14px;
+}
+
+.export-toggle input {
+  accent-color: var(--brand-2);
 }
 
 .export-option-row {
@@ -2179,6 +2244,9 @@ button {
 }
 
 @media (max-width: 640px) {
+  .export-scope-grid,
+  .export-toggle-grid,
+  .export-range-row,
   .export-option-row,
   .export-format-grid {
     grid-template-columns: 1fr;

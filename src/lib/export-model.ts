@@ -10,10 +10,18 @@ import {
 
 export type ExportFormat = "png" | "pdf" | "docx" | "csv" | "json" | "ics";
 
-export type PlanExportOptions = Pick<
+export type PlanExportOptions = Partial<Pick<
   UserSettings,
   "defaultEasyPace" | "defaultCooldownPace" | "showEasyRunPaceTargets"
->;
+>> & {
+  weekStartIndex?: number;
+  weekEndIndex?: number;
+  includeRestDays?: boolean;
+  includePaces?: boolean;
+  includeHrZones?: boolean;
+  includeRationale?: boolean;
+  includeWarnings?: boolean;
+};
 
 export type ExportPaceItem = {
   key: string;
@@ -150,6 +158,7 @@ function fmtSettingPace(value: string | undefined): string {
 }
 
 export function sessionPaceForExport(session: PlannedSession, options?: PlanExportOptions): string {
+  if (options?.includePaces === false) return "";
   if (EASY_PACE_OPTIONAL_TYPES.has(session.type)) {
     if (options?.showEasyRunPaceTargets !== true) return "";
     const setting = session.type === "recovery" ? options.defaultCooldownPace : options.defaultEasyPace;
@@ -159,6 +168,7 @@ export function sessionPaceForExport(session: PlannedSession, options?: PlanExpo
 }
 
 export function buildPaceReference(plan: TrainingPlan, options?: PlanExportOptions): ExportPaceItem[] {
+  if (options?.includePaces === false) return [];
   return [
     fmtSettingPace(options?.defaultEasyPace)
       ? { key: "easy", label: "Easy setting", value: fmtSettingPace(options?.defaultEasyPace) }
@@ -190,10 +200,10 @@ function buildSession(session: PlannedSession, options?: PlanExportOptions): Exp
     distance: fmtDistance(session.target_km),
     targetKm: session.target_km,
     pace: sessionPaceForExport(session, options),
-    hrZone: session.hr_zone ?? "",
+    hrZone: options?.includeHrZones === false ? "" : session.hr_zone ?? "",
     rpe: fmtNumber(session.target_rpe),
     description: session.description,
-    rationale: session.rationale,
+    rationale: options?.includeRationale === false ? "" : session.rationale,
     mainSet: session.main_set ?? "",
     isRest: session.type === "rest",
   };
@@ -202,6 +212,9 @@ function buildSession(session: PlannedSession, options?: PlanExportOptions): Exp
 function buildWeek(week: TrainingPlan["weeks"][number], options?: PlanExportOptions): ExportWeek {
   const phase = planPhaseLabel(week.phase);
   const label = week.is_deload ? `${phase} · Deload` : phase;
+  const sessions = options?.includeRestDays === false
+    ? week.sessions.filter((session) => session.type !== "rest")
+    : week.sessions;
   return {
     index: week.week_index,
     number: week.week_index + 1,
@@ -214,15 +227,23 @@ function buildWeek(week: TrainingPlan["weeks"][number], options?: PlanExportOpti
     longRunKm: week.long_run_km,
     longRunDistance: fmtDistance(week.long_run_km),
     qualityCount: week.quality_count,
-    sessions: week.sessions.map((session) => buildSession(session, options)),
+    sessions: sessions.map((session) => buildSession(session, options)),
   };
+}
+
+function scopedWeeks(plan: TrainingPlan, options?: PlanExportOptions): TrainingPlan["weeks"] {
+  const lastIndex = Math.max(0, plan.weeks.length - 1);
+  const start = Math.min(Math.max(0, options?.weekStartIndex ?? 0), lastIndex);
+  const end = Math.min(Math.max(start, options?.weekEndIndex ?? lastIndex), lastIndex);
+  return plan.weeks.slice(start, end + 1);
 }
 
 export function buildPlanExportModel(plan: TrainingPlan, options?: PlanExportOptions): PlanExportModel {
   const goalRace = planGoalLabel(plan.meta.goal_race);
-  const totalKm = plan.weeks.reduce((sum, week) => sum + week.total_km, 0);
-  const firstSession = plan.weeks[0]?.sessions[0];
-  const lastWeek = plan.weeks.at(-1);
+  const weeks = scopedWeeks(plan, options);
+  const totalKm = weeks.reduce((sum, week) => sum + week.total_km, 0);
+  const firstSession = weeks[0]?.sessions[0];
+  const lastWeek = weeks.at(-1);
   const lastSession = lastWeek?.sessions.at(-1);
   const goalDate = formatPlanDate(plan.meta.goal_date, {
     month: "long",
@@ -237,11 +258,11 @@ export function buildPlanExportModel(plan: TrainingPlan, options?: PlanExportOpt
       motto: BRAND_MOTTO,
     },
     title: `${goalRace} Training Plan`,
-    subtitle: `${titleCase(plan.meta.level)} · ${plan.meta.weeks_total} weeks · Goal: ${goalDate}`,
+    subtitle: `${titleCase(plan.meta.level)} · ${weeks.length || plan.meta.weeks_total} weeks · Goal: ${goalDate}`,
     meta: {
       goalRace,
       level: titleCase(plan.meta.level),
-      weeksTotal: plan.meta.weeks_total,
+      weeksTotal: weeks.length || plan.meta.weeks_total,
       startDate: firstSession?.date ?? plan.meta.start_date,
       endDate: lastSession?.date ?? plan.meta.goal_date,
       goalDate,
@@ -249,7 +270,7 @@ export function buildPlanExportModel(plan: TrainingPlan, options?: PlanExportOpt
       generatedAt: plan.meta.generated_at,
     },
     paceReference: buildPaceReference(plan, options),
-    weeks: plan.weeks.map((week) => buildWeek(week, options)),
-    warnings: plan.warnings,
+    weeks: weeks.map((week) => buildWeek(week, options)),
+    warnings: options?.includeWarnings === false ? [] : plan.warnings,
   };
 }
