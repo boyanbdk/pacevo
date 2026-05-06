@@ -117,6 +117,16 @@ describe("plan export model", () => {
     expect(model.weeks[1].longRunDistance).toBe("12.0 km");
   });
 
+  test("computes document summary metadata", () => {
+    const model = buildPlanExportModel(PLAN, defaultSettings);
+
+    expect(model.title).toBe("10K Training Plan");
+    expect(model.subtitle).toBe("Intermediate · 2 weeks · Goal: July 4, 2026");
+    expect(model.meta.startDate).toBe("2026-05-04");
+    expect(model.meta.endDate).toBe("2026-05-11");
+    expect(model.meta.totalKm).toBe(83);
+  });
+
   test("easy sessions export no derived pace by default", () => {
     expect(sessionPaceForExport(session({ type: "easy" }), defaultSettings)).toBe("");
   });
