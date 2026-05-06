@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, ArrowLeft, ChevronRight, Download, FileImage, FileJson, FileSpreadsheet, FileText, FileUp, GitBranch, History, LayoutGrid, Target, X, Zap } from "lucide-react";
+import { Archive, ArrowLeft, CalendarDays, ChevronRight, Download, FileImage, FileJson, FileSpreadsheet, FileText, FileUp, GitBranch, History, LayoutGrid, Target, X, Zap } from "lucide-react";
 import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -13,7 +13,7 @@ import { BRAND_EXPORT_LABEL, BRAND_NAME } from "@/lib/brand";
 import { formatShortPlanDate, formatWeekRange, formatWeekdayDate, parsePlanDate } from "@/lib/plan-dates";
 import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
 import { applyAdaptation, getPlan, getWorkoutPreferences, logSession, removeCompletedSession, updatePlanStatus } from "@/lib/plan-storage";
-import { exportPlanCsv, exportPlanDocx, exportPlanJson, exportPlanPdf, exportPlanWeekCardImage, type PlanWeekImagePreset } from "@/lib/export";
+import { exportPlanCsv, exportPlanDocx, exportPlanIcs, exportPlanJson, exportPlanPdf, exportPlanWeekCardImage, type PlanWeekImagePreset } from "@/lib/export";
 import { getSettings } from "@/lib/storage";
 import type { UserSettings } from "@/domain/workout-schema";
 
@@ -927,6 +927,110 @@ function VersionHistory({ versions }: { versions: PlanVersion[] }) {
   );
 }
 
+function PlanExportSheet({
+  plan,
+  settings,
+  weekIndex,
+  pngPreset,
+  onPngPresetChange,
+  onClose,
+}: {
+  plan: SavedPlan;
+  settings: UserSettings;
+  weekIndex: number;
+  pngPreset: PlanWeekImagePreset;
+  onPngPresetChange: (preset: PlanWeekImagePreset) => void;
+  onClose: () => void;
+}) {
+  const currentWeek = plan.plan.weeks[weekIndex];
+
+  function runExport(action: () => void | Promise<void>) {
+    void Promise.resolve(action()).then(onClose);
+  }
+
+  return (
+    <div className="sheet-overlay" role="presentation" onClick={onClose}>
+      <section
+        className="why-sheet export-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Export plan"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="why-sheet-header">
+          <div>
+            <span className="card-kicker">Export</span>
+            <h2>{GOAL_LABELS[plan.plan.meta.goal_race]} plan</h2>
+          </div>
+          <button className="button ghost icon-button" type="button" onClick={onClose} aria-label="Close">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="why-sheet-section">
+          <span className="field-label">Week image</span>
+          <div className="export-option-row">
+            <div>
+              <strong>Week {weekIndex + 1} PNG</strong>
+              <span>{formatWeekRange(currentWeek)} · {currentWeek.total_km.toFixed(0)} km</span>
+            </div>
+            <select
+              className="select"
+              aria-label="PNG export size"
+              value={pngPreset}
+              onChange={(event) => onPngPresetChange(event.target.value as PlanWeekImagePreset)}
+            >
+              <option value="landscape">Landscape</option>
+              <option value="square">Square</option>
+              <option value="story">Story</option>
+              <option value="print">Print</option>
+            </select>
+            <button
+              className="button primary"
+              type="button"
+              onClick={() => runExport(() => exportPlanWeekCardImage(plan.plan, weekIndex, settings, pngPreset))}
+            >
+              <FileImage size={16} />
+              Export PNG
+            </button>
+          </div>
+        </div>
+
+        <div className="why-sheet-section">
+          <span className="field-label">Full plan documents</span>
+          <div className="export-format-grid">
+            <button className="export-format-button" type="button" onClick={() => runExport(() => exportPlanPdf(plan.plan, settings))}>
+              <FileText size={18} />
+              <strong>PDF</strong>
+              <span>Designed plan document</span>
+            </button>
+            <button className="export-format-button" type="button" onClick={() => runExport(() => exportPlanDocx(plan.plan, settings))}>
+              <Download size={18} />
+              <strong>DOCX</strong>
+              <span>Editable coach handoff</span>
+            </button>
+            <button className="export-format-button" type="button" onClick={() => runExport(() => exportPlanCsv(plan.plan, settings))}>
+              <FileSpreadsheet size={18} />
+              <strong>CSV</strong>
+              <span>Session rows</span>
+            </button>
+            <button className="export-format-button" type="button" onClick={() => runExport(() => exportPlanJson(plan.plan, settings))}>
+              <FileJson size={18} />
+              <strong>JSON</strong>
+              <span>Structured export model</span>
+            </button>
+            <button className="export-format-button" type="button" onClick={() => runExport(() => exportPlanIcs(plan.plan, settings))}>
+              <CalendarDays size={18} />
+              <strong>ICS</strong>
+              <span>Calendar events</span>
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -941,6 +1045,7 @@ export default function PlanDetailPage() {
   const [tab, setTab] = useState<Tab>("plan");
   const [selectedEvent, setSelectedEvent] = useState<AdaptationEvent | null>(null);
   const [pngPreset, setPngPreset] = useState<PlanWeekImagePreset>("landscape");
+  const [exportOpen, setExportOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [settings, setSettings] = useState<UserSettings>(getSettings());
   const weekSectionRefs = useRef<Record<number, HTMLElement | null>>({});
@@ -1044,41 +1149,9 @@ export default function PlanDetailPage() {
           </p>
         </div>
         <div className="button-row">
-          <button
-            className="button ghost"
-            title="Export week as PNG"
-            onClick={() => exportPlanWeekCardImage(plan.plan, weekIndex, settings, pngPreset)}
-          >
-            <FileImage size={16} />
-            PNG
-          </button>
-          <select
-            className="select"
-            aria-label="PNG export size"
-            value={pngPreset}
-            onChange={(event) => setPngPreset(event.target.value as PlanWeekImagePreset)}
-            style={{ width: 134, minHeight: 42 }}
-          >
-            <option value="landscape">Landscape</option>
-            <option value="square">Square</option>
-            <option value="story">Story</option>
-            <option value="print">Print</option>
-          </select>
-          <button className="button ghost" title="Export full plan as PDF" onClick={() => exportPlanPdf(plan.plan, settings)}>
-            <FileText size={16} />
-            PDF
-          </button>
-          <button className="button ghost" title="Export full plan as DOCX" onClick={() => exportPlanDocx(plan.plan, settings)}>
+          <button className="button ghost" title="Export plan" onClick={() => setExportOpen(true)}>
             <Download size={16} />
-            DOCX
-          </button>
-          <button className="button ghost" title="Export full plan as CSV" onClick={() => exportPlanCsv(plan.plan, settings)}>
-            <FileSpreadsheet size={16} />
-            CSV
-          </button>
-          <button className="button ghost" title="Export full plan as JSON" onClick={() => exportPlanJson(plan.plan, settings)}>
-            <FileJson size={16} />
-            JSON
+            Export
           </button>
           <button className="button ghost" title={plan.status === "archived" ? "Restore plan" : "Archive plan"} onClick={handleArchive}>
             <Archive size={16} />
@@ -1259,6 +1332,16 @@ export default function PlanDetailPage() {
           event={selectedEvent}
           plan={plan}
           onClose={() => setSelectedEvent(null)}
+        />
+      )}
+      {exportOpen && (
+        <PlanExportSheet
+          plan={plan}
+          settings={settings}
+          weekIndex={weekIndex}
+          pngPreset={pngPreset}
+          onPngPresetChange={setPngPreset}
+          onClose={() => setExportOpen(false)}
         />
       )}
     </>

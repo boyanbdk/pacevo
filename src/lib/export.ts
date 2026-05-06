@@ -31,7 +31,7 @@ import {
   type PlanExportModel,
   type PlanExportOptions,
 } from "./export-model";
-import { planExportCsvText, planExportJsonText } from "./export-renderers/data";
+import { planExportCsvText, planExportIcsText, planExportJsonText } from "./export-renderers/data";
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -736,6 +736,15 @@ export function exportPlanJson(plan: TrainingPlan, options?: PlanExportOptions) 
     planExportJsonText(model),
     `${slugify(planGoalLabel(plan.meta.goal_race))}-training-plan.json`,
     "application/json;charset=utf-8",
+  );
+}
+
+export function exportPlanIcs(plan: TrainingPlan, options?: PlanExportOptions) {
+  const model = buildPlanExportModel(plan, options);
+  downloadText(
+    planExportIcsText(model),
+    `${slugify(planGoalLabel(plan.meta.goal_race))}-training-plan.ics`,
+    "text/calendar;charset=utf-8",
   );
 }
 

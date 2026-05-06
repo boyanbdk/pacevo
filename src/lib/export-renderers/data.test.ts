@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import type { PlanExportModel } from "../export-model";
-import { planExportCsvText, planExportJsonText } from "./data";
+import { planExportCsvText, planExportIcsText, planExportJsonText } from "./data";
 
 const MODEL: PlanExportModel = {
   brand: {
@@ -98,5 +98,17 @@ describe("data export renderers", () => {
 
     expect(parsed.title).toBe("10K Training Plan");
     expect(parsed.weeks[0].sessions.at(-1)?.isRest).toBe(true);
+  });
+
+  test("writes calendar events for planned sessions", () => {
+    const ics = planExportIcsText(MODEL);
+
+    expect(ics).toContain("BEGIN:VCALENDAR");
+    expect(ics).toContain("X-WR-CALNAME:10K Training Plan");
+    expect(ics.match(/BEGIN:VEVENT/g)).toHaveLength(2);
+    expect(ics).toContain("DTSTART;VALUE=DATE:20260504");
+    expect(ics).toContain("DTEND;VALUE=DATE:20260505");
+    expect(ics).toContain("SUMMARY:Pacevo: Hills · 6.0 km");
+    expect(ics).toContain("CATEGORIES:Rest");
   });
 });

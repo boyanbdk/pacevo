@@ -2101,6 +2101,66 @@ button {
   gap: 8px;
 }
 
+.export-sheet {
+  width: min(620px, 100%);
+}
+
+.export-option-row {
+  display: grid;
+  grid-template-columns: 1fr 150px auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.export-option-row strong,
+.export-option-row span {
+  display: block;
+}
+
+.export-option-row span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.export-format-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.export-format-button {
+  min-height: 108px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.035);
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.export-format-button:hover {
+  border-color: rgba(40, 210, 174, 0.55);
+  background: rgba(40, 210, 174, 0.08);
+}
+
+.export-format-button svg {
+  color: var(--brand-2);
+}
+
+.export-format-button span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .why-stat,
 .why-list-row {
   border: 1px solid var(--line);
@@ -2116,6 +2176,13 @@ button {
 
 .why-stat strong {
   font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .export-option-row,
+  .export-format-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .why-list {
