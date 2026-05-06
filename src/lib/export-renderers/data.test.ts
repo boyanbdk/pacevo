@@ -48,8 +48,8 @@ const MODEL: PlanExportModel = {
           pace: "3:57/km",
           hrZone: "Z5",
           rpe: "8",
-          description: "Hill repeats, controlled",
-          rationale: "Build strength",
+          description: "Hill repeats, controlled; stay tall",
+          rationale: "Build strength\nwithout overstriding",
           mainSet: "8x60s hills",
           isRest: false,
         },
@@ -80,17 +80,16 @@ const MODEL: PlanExportModel = {
 describe("data export renderers", () => {
   test("writes one CSV row per session including rest days", () => {
     const csv = planExportCsvText(MODEL);
-    const lines = csv.split("\n");
 
-    expect(lines).toHaveLength(3);
-    expect(lines[0]).toContain("week_number,week_label");
-    expect(lines[1]).toContain('Hills,6,6.0 km,3:57/km');
-    expect(lines[2]).toContain("Rest,,,,,,Rest day");
-    expect(lines[2].endsWith(",true")).toBe(true);
+    expect(csv.startsWith("week_number,week_label")).toBe(true);
+    expect(csv).toContain("Hills,6,6.0 km,3:57/km");
+    expect(csv).toContain("Rest,,,,,,Rest day");
+    expect(csv).toContain("Rest day,Absorb training,,true");
   });
 
   test("escapes commas in CSV cells", () => {
-    expect(planExportCsvText(MODEL)).toContain('"Hill repeats, controlled"');
+    expect(planExportCsvText(MODEL)).toContain('"Hill repeats, controlled; stay tall"');
+    expect(planExportCsvText(MODEL)).toContain('"Build strength\nwithout overstriding"');
   });
 
   test("writes parseable JSON with export metadata", () => {
@@ -109,6 +108,18 @@ describe("data export renderers", () => {
     expect(ics).toContain("DTSTART;VALUE=DATE:20260504");
     expect(ics).toContain("DTEND;VALUE=DATE:20260505");
     expect(ics).toContain("SUMMARY:Pacevo: Hills · 6.0 km");
+    expect(ics).toContain("DESCRIPTION:Hill repeats\\, controlled\\; stay tall\\nTarget: 6.0 km | 3:57/km | HR Z5 | RPE 8");
+    expect(ics).toContain("Why: Build strength\\nwithout overstriding");
     expect(ics).toContain("CATEGORIES:Rest");
+  });
+
+  test("keeps calendar export structurally balanced", () => {
+    const ics = planExportIcsText(MODEL);
+
+    expect(ics.split("BEGIN:VEVENT")).toHaveLength(3);
+    expect(ics.match(/END:VEVENT/g)).toHaveLength(2);
+    expect(ics.endsWith("END:VCALENDAR")).toBe(true);
+    expect(ics).not.toContain("undefined");
+    expect(ics).not.toContain("null");
   });
 });
