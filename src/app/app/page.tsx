@@ -32,6 +32,7 @@ import {
   dateKey,
   dayLabel,
   formatDate,
+  formatStravaSyncStatus,
   latestFeedbackNeeded,
   nextLongRun,
   nextRun,
@@ -110,11 +111,6 @@ type StravaActivityState =
       lastSyncError: string | null;
       error: string;
     };
-
-function formatSyncStatus(lastSyncedAt: string | null, count: number): string {
-  if (!lastSyncedAt) return `${count} stored Strava run${count === 1 ? "" : "s"}`;
-  return `${count} stored Strava run${count === 1 ? "" : "s"} · Last synced ${formatDate(lastSyncedAt)}`;
-}
 
 function ActivePlanDashboard({ plan, workouts }: { plan: SavedPlan; workouts: SavedWorkout[] }) {
   const [strava, setStrava] = useState<StravaActivityState>({
@@ -326,7 +322,7 @@ function ActivePlanDashboard({ plan, workouts }: { plan: SavedPlan; workouts: Sa
               <h2>Recent activity</h2>
               {strava.connected && (
                 <span className="muted">
-                  {strava.status === "loading" ? "Loading Strava..." : formatSyncStatus(strava.lastSyncedAt, strava.activities.length)}
+                  {strava.status === "loading" ? "Loading Strava..." : formatStravaSyncStatus(strava.lastSyncedAt, strava.activities.length)}
                 </span>
               )}
               {(strava.status === "error" || strava.lastSyncError) && <span className="muted">{strava.error ?? strava.lastSyncError}</span>}

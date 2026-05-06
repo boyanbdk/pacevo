@@ -91,6 +91,33 @@ export function formatDate(value: string): string {
   return parsePlanDate(value).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+export function formatStravaSyncStatus(lastSyncedAt: string | null, count: number, now = new Date()): string {
+  const runLabel = `${count} stored Strava run${count === 1 ? "" : "s"}`;
+  if (!lastSyncedAt) return runLabel;
+
+  const syncedAt = new Date(lastSyncedAt);
+  if (!Number.isFinite(syncedAt.getTime())) return `${runLabel} · Last sync recorded`;
+
+  const diffMs = now.getTime() - syncedAt.getTime();
+  if (diffMs >= 0 && diffMs < 60_000) return `${runLabel} · Last synced just now`;
+  if (diffMs >= 0 && diffMs < 60 * 60_000) {
+    const minutes = Math.max(1, Math.floor(diffMs / 60_000));
+    return `${runLabel} · Last synced ${minutes} min ago`;
+  }
+
+  const sameDay =
+    syncedAt.getFullYear() === now.getFullYear() &&
+    syncedAt.getMonth() === now.getMonth() &&
+    syncedAt.getDate() === now.getDate();
+  const time = syncedAt.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  if (sameDay) return `${runLabel} · Last synced today ${time}`;
+
+  return `${runLabel} · Last synced ${syncedAt.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  })} ${time}`;
+}
+
 export function weeksRemaining(plan: SavedPlan, today = new Date()): number {
   const goal = parsePlanDate(plan.plan.meta.goal_date);
   return Math.max(0, Math.ceil((goal.getTime() - today.getTime()) / (7 * 86400000)));

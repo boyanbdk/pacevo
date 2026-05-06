@@ -4,6 +4,7 @@ import type { SavedPlan } from "./plan-storage";
 import {
   completedKmForWeek,
   currentWeekIndex,
+  formatStravaSyncStatus,
   latestFeedbackNeeded,
   nextLongRun,
   nextRun,
@@ -355,4 +356,12 @@ test("stravaActivityItems hide activities already imported by provider id", () =
   }]);
 
   expect(items).toEqual([]);
+});
+
+test("strava dashboard sync status keeps remembered sync time visible", () => {
+  const now = new Date("2026-05-07T07:15:00.000Z");
+
+  expect(formatStravaSyncStatus(null, 2, now)).toBe("2 stored Strava runs");
+  expect(formatStravaSyncStatus("2026-05-07T07:14:30.000Z", 1, now)).toBe("1 stored Strava run · Last synced just now");
+  expect(formatStravaSyncStatus("2026-05-07T06:50:00.000Z", 3, now)).toBe("3 stored Strava runs · Last synced 25 min ago");
 });

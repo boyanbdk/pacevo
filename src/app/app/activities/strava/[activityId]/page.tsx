@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, ArrowLeft, CalendarDays, Clock, Heart, MapPin, Route, Timer } from "lucide-react";
+import { AlertCircle, ArrowLeft, CalendarDays, Clock, ExternalLink, Heart, MapPin, Route, Timer } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -40,6 +40,23 @@ type ImportCandidate = {
   plan: SavedPlan;
   match: ActivityMatch;
 };
+
+function rawString(raw: unknown, key: string): string | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = (raw as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function formatStartedAt(activity: StravaActivityDetailPayload): string {
+  const rawLocalStart = rawString(activity.raw, "start_date_local");
+  const startedAt = new Date(rawLocalStart ?? activity.startedAt);
+  if (!Number.isFinite(startedAt.getTime())) return formatFullPlanDate(activity.date);
+
+  return `${formatFullPlanDate(activity.date)} · ${startedAt.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+}
 
 function findLinkedSession(activity: StravaActivityDetailPayload, plans: SavedPlan[]): LinkedSession | null {
   for (const plan of plans.filter((candidate) => candidate.status === "active")) {
@@ -199,6 +216,15 @@ export default function StravaActivityDetailPage() {
               Match in plan
             </Link>
           )}
+          <a
+            className="button ghost"
+            href={`https://www.strava.com/activities/${encodeURIComponent(activity.providerActivityId)}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <ExternalLink size={16} />
+            Open in Strava
+          </a>
         </div>
       </div>
 
@@ -226,8 +252,8 @@ export default function StravaActivityDetailPage() {
       <section className="grid-3 activity-metrics">
         <div className="panel session-metric">
           <CalendarDays size={18} />
-          <strong>{formatFullPlanDate(activity.date)}</strong>
-          <span className="muted">Date</span>
+          <strong>{formatStartedAt(activity)}</strong>
+          <span className="muted">Started</span>
         </div>
         <div className="panel session-metric">
           <Clock size={18} />
@@ -253,6 +279,16 @@ export default function StravaActivityDetailPage() {
           <MapPin size={18} />
           <strong>{activity.providerActivityId}</strong>
           <span className="muted">Strava ID</span>
+        </div>
+        <div className="panel session-metric">
+          <Route size={18} />
+          <strong>{activity.sportType ?? "Activity"}</strong>
+          <span className="muted">Sport type</span>
+        </div>
+        <div className="panel session-metric">
+          <CalendarDays size={18} />
+          <strong>{activity.importedIntoPlanAt ? "Imported" : "Stored only"}</strong>
+          <span className="muted">Plan import</span>
         </div>
       </section>
     </div>

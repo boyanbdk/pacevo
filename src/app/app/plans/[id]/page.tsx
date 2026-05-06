@@ -144,6 +144,12 @@ function allPlanSessions(plan: SavedPlan): { weekIndex: number; dayIndex: number
   return out;
 }
 
+function stravaActivityDetailHref(activity: ImportedActivity): string | null {
+  if (activity.source !== "strava") return null;
+  const routeId = activity.providerActivityId ?? activity.id.replace(/^strava:/, "");
+  return routeId ? `/app/activities/strava/${encodeURIComponent(routeId)}` : null;
+}
+
 function ImportedActivityPanel({
   plan,
   onPlanChanged,
@@ -371,6 +377,7 @@ function ImportedActivityPanel({
                 : null;
               const override = overrides[match.activity.id];
               const canImport = (match.status === "auto" || match.status === "suggestion" || override != null) && match.status !== "duplicate";
+              const detailHref = stravaActivityDetailHref(match.activity);
               return (
                 <div key={match.activity.id} className="import-match-row">
                   <div className="import-match-main">
@@ -407,6 +414,11 @@ function ImportedActivityPanel({
                     </select>
                   </div>
                   <div className="import-match-actions">
+                    {detailHref && (
+                      <Link className="button ghost" href={detailHref}>
+                        Details
+                      </Link>
+                    )}
                     {match.status === "duplicate" ? (
                       <button
                         className="button ghost"
