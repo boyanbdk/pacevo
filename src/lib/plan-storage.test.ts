@@ -10,6 +10,7 @@ import {
   getWorkoutPreferences,
   applyWorkoutSwap,
   logSession,
+  movePlannedSessionDate,
   recordWorkoutFeedback,
   savePlan,
 } from "./plan-storage";
@@ -174,4 +175,83 @@ test("applyWorkoutSwap creates a new version and records swap feedback", () => {
   expect(updated.plan.weeks[weekIndex].sessions.find((s) => s.day_index === session.day_index)?.main_set)
     .toBe("Swapped similar workout");
   expect(updated.workoutFeedback.at(-1)?.type).toBe("swap");
+});
+
+test("movePlannedSessionDate swaps workout dates and records a user edit version", () => {
+  const plan = createPlan(INPUTS, buildPlan(INPUTS));
+  savePlan(plan);
+
+  const weekIndex = plan.plan.weeks.findIndex((week) =>
+    week.sessions.some((session) => session.type !== "rest" && session.type !== "race"),
+  );
+  const source = plan.plan.weeks[weekIndex].sessions.find((session) => session.type !== "rest" && session.type !== "race")!;
+  const target = plan.plan.weeks[weekIndex].sessions.find((session) => session.type === "rest")!;
+
+  const updated = movePlannedSessionDate(
+    plan.id,
+    { weekIndex, dayIndex: source.day_index },
+    { weekIndex, dayIndex: target.day_index },
+  );
+  const moved = updated.plan.weeks[weekIndex].sessions.find((session) => session.day_index === target.day_index);
+  const rest = updated.plan.weeks[weekIndex].sessions.find((session) => session.day_index === source.day_index);
+
+  expect(updated.versions).toHaveLength(2);
+  expect(updated.versions.at(-1)?.reason).toBe("user_edit");
+  expect(moved?.type).toBe(source.type);
+  expect(moved?.date).toBe(target.date);
+  expect(rest?.type).toBe("rest");
+});
+
+test("movePlannedSessionDate labels cross-week moves with their origin week", () => {
+  const plan = createPlan(INPUTS, buildPlan(INPUTS));
+  savePlan(plan);
+
+  const sourceWeekIndex = plan.plan.weeks.findIndex((week) =>
+    week.sessions.some((session) => session.type === "easy"),
+  );
+  const targetWeekIndex = plan.plan.weeks.findIndex((week, index) =>
+    index > sourceWeekIndex + 1 && week.sessions.some((session) => session.type === "rest"),
+  );
+  const source = plan.plan.weeks[sourceWeekIndex].sessions.find((session) => session.type === "easy")!;
+  const target = plan.plan.weeks[targetWeekIndex].sessions.find((session) => session.type === "rest")!;
+
+  const updated = movePlannedSessionDate(
+    plan.id,
+    { weekIndex: sourceWeekIndex, dayIndex: source.day_index },
+    { weekIndex: targetWeekIndex, dayIndex: target.day_index },
+  );
+  const moved = updated.plan.weeks[targetWeekIndex].sessions.find((session) => session.day_index === target.day_index);
+
+  expect(moved?.type).toBe("easy");
+  expect(moved?.moved_from_week_index).toBe(sourceWeekIndex);
+  expect(moved?.moved_from_day_index).toBe(source.day_index);
+});
+
+test("movePlannedSessionDate blocks edits that create consecutive hard days", () => {
+  const plan = createPlan(INPUTS, buildPlan(INPUTS));
+  const custom = {
+    ...plan,
+    plan: {
+      ...plan.plan,
+      weeks: [
+        {
+          ...plan.plan.weeks[0],
+          sessions: plan.plan.weeks[0].sessions.map((session) => {
+            if (session.day_index === 1) return { ...session, type: "tempo" as const, session_role: "quality" as const };
+            if (session.day_index === 2) return { ...session, type: "rest" as const, session_role: "rest" as const, target_km: null };
+            if (session.day_index === 3) return { ...session, type: "interval" as const, session_role: "quality" as const };
+            return session;
+          }),
+        },
+        ...plan.plan.weeks.slice(1),
+      ],
+    },
+  };
+  savePlan(custom);
+
+  expect(() => movePlannedSessionDate(
+    plan.id,
+    { weekIndex: 0, dayIndex: 3 },
+    { weekIndex: 0, dayIndex: 2 },
+  )).toThrow(/consecutive hard days/);
 });

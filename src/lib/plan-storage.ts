@@ -72,6 +72,11 @@ export type SavedPlan = {
   updatedAt: string;
 };
 
+export type PlanSessionSlot = {
+  weekIndex: number;
+  dayIndex: number;
+};
+
 // ---------------------------------------------------------------------------
 // Storage helpers
 // ---------------------------------------------------------------------------
@@ -310,6 +315,185 @@ export function applyWorkoutSwap(
     workoutFeedback: swapFeedback
       ? [...plan.workoutFeedback, swapFeedback]
       : plan.workoutFeedback,
+    updatedAt: now,
+  };
+
+  savePlan(updated);
+  return updated;
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+function computeWeekAcwr(weekIndex: number, totals: number[]): number | null {
+  if (weekIndex < 4) return null;
+  const acute = totals[weekIndex];
+  const window = totals.slice(Math.max(0, weekIndex - 4), weekIndex);
+  const chronic = window.reduce((sum, value) => sum + value, 0) / window.length;
+  if (chronic === 0) return null;
+  return Math.round((acute / chronic) * 100) / 100;
+}
+
+function refreshWeekSummaries(plan: TrainingPlan): TrainingPlan {
+  const totals = plan.weeks.map((week) =>
+    round1(week.sessions.reduce((sum, session) => sum + (session.target_km ?? 0), 0)),
+  );
+  return {
+    ...plan,
+    weeks: plan.weeks.map((week, index) => {
+      const longRunKm = Math.max(
+        0,
+        ...week.sessions
+          .filter((session) => session.session_role === "long" || session.type === "race")
+          .map((session) => session.target_km ?? 0),
+      );
+      return {
+        ...week,
+        total_km: totals[index],
+        long_run_km: round1(longRunKm),
+        quality_count: week.sessions.filter((session) => session.session_role === "quality").length,
+        acwr: computeWeekAcwr(index, totals),
+      };
+    }),
+  };
+}
+
+function moveSessionToSlot(session: PlannedSession, target: PlannedSession): PlannedSession {
+  return {
+    ...session,
+    day_index: target.day_index,
+    date: target.date,
+  };
+}
+
+const HARD_MOVE_TYPES = new Set<PlannedSession["type"]>([
+  "tempo",
+  "interval",
+  "repetition",
+  "marathon_pace",
+  "hills",
+  "fartlek",
+  "race",
+]);
+
+function isHardForMoveGuard(session: PlannedSession): boolean {
+  return HARD_MOVE_TYPES.has(session.type) || session.session_role === "quality";
+}
+
+function isLongForMoveGuard(session: PlannedSession): boolean {
+  return session.session_role === "long" || session.type === "long" || session.type === "race";
+}
+
+function calendarDayOrdinal(weekIndex: number, dayIndex: number): number {
+  return weekIndex * 7 + dayIndex;
+}
+
+function validateMovedSchedule(plan: TrainingPlan): void {
+  const sessions = plan.weeks.flatMap((week, weekIndex) =>
+    week.sessions
+      .filter((session) => session.type !== "rest")
+      .map((session) => ({ weekIndex, session })),
+  );
+
+  const hardSessions = sessions
+    .filter(({ session }) => isHardForMoveGuard(session))
+    .sort((a, b) =>
+      calendarDayOrdinal(a.weekIndex, a.session.day_index) - calendarDayOrdinal(b.weekIndex, b.session.day_index),
+    );
+  for (let i = 1; i < hardSessions.length; i++) {
+    const prev = hardSessions[i - 1];
+    const curr = hardSessions[i];
+    const gap = calendarDayOrdinal(curr.weekIndex, curr.session.day_index) - calendarDayOrdinal(prev.weekIndex, prev.session.day_index);
+    if (gap <= 1) {
+      throw new Error("That move would create consecutive hard days. Leave at least one easy/rest day between hard workouts.");
+    }
+  }
+
+  for (const candidate of sessions) {
+    if (!isHardForMoveGuard(candidate.session)) continue;
+    for (const long of sessions) {
+      if (!isLongForMoveGuard(long.session)) continue;
+      if (long.session === candidate.session) continue;
+      const gap = Math.abs(
+        calendarDayOrdinal(candidate.weekIndex, candidate.session.day_index)
+        - calendarDayOrdinal(long.weekIndex, long.session.day_index),
+      );
+      if (gap <= 1) {
+        throw new Error("That move places a hard workout too close to a long run or race. Keep at least one easy/rest day between them.");
+      }
+    }
+  }
+}
+
+function movedSessionWithOrigin(
+  session: PlannedSession,
+  source: PlanSessionSlot,
+  targetSession: PlannedSession,
+): PlannedSession {
+  const moved = moveSessionToSlot(session, targetSession);
+  if (session.type === "rest") {
+    return {
+      ...moved,
+      moved_from_week_index: null,
+      moved_from_day_index: null,
+    };
+  }
+  return {
+    ...moved,
+    moved_from_week_index: source.weekIndex,
+    moved_from_day_index: source.dayIndex,
+  };
+}
+
+export function movePlannedSessionDate(
+  planId: string,
+  source: PlanSessionSlot,
+  target: PlanSessionSlot,
+): SavedPlan {
+  const plan = getPlan(planId);
+  if (!plan) throw new Error(`Plan ${planId} not found`);
+  if (source.weekIndex === target.weekIndex && source.dayIndex === target.dayIndex) return plan;
+
+  const sourceSession = plan.plan.weeks[source.weekIndex]?.sessions.find((session) => session.day_index === source.dayIndex);
+  const targetSession = plan.plan.weeks[target.weekIndex]?.sessions.find((session) => session.day_index === target.dayIndex);
+  if (!sourceSession || !targetSession) throw new Error("Could not find both calendar slots.");
+  if (sourceSession.type === "race" || targetSession.type === "race") {
+    throw new Error("Race day is fixed. Move surrounding workouts instead.");
+  }
+
+  const slotHasLog = (slot: PlanSessionSlot) =>
+    plan.completedSessions.some((session) => session.weekIndex === slot.weekIndex && session.dayIndex === slot.dayIndex);
+  if (slotHasLog(source) || slotHasLog(target)) {
+    throw new Error("Logged workout dates are locked. Remove the log before moving this workout.");
+  }
+
+  const movedSource = movedSessionWithOrigin(sourceSession, source, targetSession);
+  const movedTarget = movedSessionWithOrigin(targetSession, target, sourceSession);
+  const nextWeeks = plan.plan.weeks.map((week, weekIndex) => {
+    if (weekIndex !== source.weekIndex && weekIndex !== target.weekIndex) return week;
+    const sessions = week.sessions
+      .map((session) => {
+        if (weekIndex === source.weekIndex && session.day_index === source.dayIndex) return movedTarget;
+        if (weekIndex === target.weekIndex && session.day_index === target.dayIndex) return movedSource;
+        return session;
+      })
+      .sort((a, b) => a.day_index - b.day_index);
+    return { ...week, sessions };
+  });
+  const newPlanData = refreshWeekSummaries({ ...plan.plan, weeks: nextWeeks });
+  validateMovedSchedule(newPlanData);
+  const now = new Date().toISOString();
+  const newVersion: PlanVersion = {
+    versionIndex: plan.versions.length,
+    reason: "user_edit",
+    plan: newPlanData,
+    createdAt: now,
+  };
+  const updated: SavedPlan = {
+    ...plan,
+    plan: newPlanData,
+    versions: [...plan.versions, newVersion],
     updatedAt: now,
   };
 

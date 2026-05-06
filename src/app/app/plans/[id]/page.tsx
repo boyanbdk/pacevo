@@ -10,8 +10,8 @@ import type { TrainingWeek } from "@/domain/training-plan/types";
 import { planSettingsSummary } from "@/lib/plan-display";
 import { BRAND_EXPORT_LABEL, BRAND_NAME } from "@/lib/brand";
 import { formatShortPlanDate, formatWeekRange, formatWeekdayDate } from "@/lib/plan-dates";
-import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
-import { getPlan, removeCompletedSession, updatePlanStatus } from "@/lib/plan-storage";
+import type { AdaptationEvent, CompletedSession, PlanSessionSlot, PlanVersion, SavedPlan } from "@/lib/plan-storage";
+import { getPlan, movePlannedSessionDate, removeCompletedSession, updatePlanStatus } from "@/lib/plan-storage";
 import { currentWeekIndexForPlan, importActivityIntoPlan, markStravaActivityImported } from "@/lib/activity-plan-import";
 import { exportPlanCsv, exportPlanDocx, exportPlanIcs, exportPlanJson, exportPlanPdf, exportPlanWeekCardImage, type PlanWeekImagePreset } from "@/lib/export";
 import type { PlanExportOptions } from "@/lib/export-model";
@@ -84,6 +84,7 @@ const RULE_COLORS: Record<string, string> = {
 };
 
 const DAY_ABBRS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const PLAN_SLOT_DRAG_MIME = "application/x-pacevo-plan-slot";
 
 function dayAbbr(dayIndex: number): string {
   return DAY_ABBRS[dayIndex - 1] ?? "Day";
@@ -108,6 +109,11 @@ function weekLabel(week: TrainingWeek): string {
   if (week.is_deload) tags.push("Deload");
   tags.push(PHASE_LABELS[week.phase]);
   return tags.join(" · ");
+}
+
+function movedFromLabel(session: TrainingWeek["sessions"][number]): string | null {
+  if (session.moved_from_week_index === undefined || session.moved_from_week_index === null) return null;
+  return `From week ${session.moved_from_week_index + 1}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -454,9 +460,40 @@ function ImportedActivityPanel({
 // Calendar grid (desktop)
 // ---------------------------------------------------------------------------
 
-function CalendarGrid({ plan, weekIndex }: { plan: SavedPlan; weekIndex: number }) {
+function CalendarGrid({
+  plan,
+  weekIndex,
+  onMoveSession,
+}: {
+  plan: SavedPlan;
+  weekIndex: number;
+  onMoveSession: (source: PlanSessionSlot, target: PlanSessionSlot) => void;
+}) {
   const week = plan.plan.weeks[weekIndex];
   const id = plan.id;
+
+  function handleDragStart(event: React.DragEvent, slot: PlanSessionSlot) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(PLAN_SLOT_DRAG_MIME, JSON.stringify(slot));
+  }
+
+  function handleDrop(event: React.DragEvent, target: PlanSessionSlot) {
+    const raw = event.dataTransfer.getData(PLAN_SLOT_DRAG_MIME);
+    if (!raw) return;
+    event.preventDefault();
+    try {
+      onMoveSession(JSON.parse(raw) as PlanSessionSlot, target);
+    } catch {
+      return;
+    }
+  }
+
+  function allowDrop(event: React.DragEvent) {
+    if (event.dataTransfer.types.includes(PLAN_SLOT_DRAG_MIME)) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    }
+  }
 
   return (
     <div className="cal-grid">
@@ -470,7 +507,12 @@ function CalendarGrid({ plan, weekIndex }: { plan: SavedPlan; weekIndex: number 
 
         if (!session || session.type === "rest") {
           return (
-            <div key={di} className="cal-cell rest">
+            <div
+              key={di}
+              className="cal-cell rest"
+              onDragOver={allowDrop}
+              onDrop={(event) => handleDrop(event, { weekIndex, dayIndex })}
+            >
               <span className="cal-day">
                 <span>{day}</span>
                 {dateLabel && <span className="cal-date">{dateLabel}</span>}
@@ -486,6 +528,16 @@ function CalendarGrid({ plan, weekIndex }: { plan: SavedPlan; weekIndex: number 
             href={`/app/plans/${id}/sessions/${weekIndex}-${dayIndex}`}
             className={`cal-cell active-session${logged ? " logged" : ""}`}
             style={{ "--session-color": color } as React.CSSProperties}
+            draggable={session.type !== "race" && !logged}
+            onDragStart={(event) => {
+              if (session.type === "race" || logged) {
+                event.preventDefault();
+                return;
+              }
+              handleDragStart(event, { weekIndex, dayIndex });
+            }}
+            onDragOver={allowDrop}
+            onDrop={(event) => handleDrop(event, { weekIndex, dayIndex })}
           >
             <span className="cal-day">
               <span>{day}</span>
@@ -493,6 +545,7 @@ function CalendarGrid({ plan, weekIndex }: { plan: SavedPlan; weekIndex: number 
             </span>
             <span className="cal-session-type">{SESSION_LABELS[session.type]}</span>
             <span className="cal-session-dist">{fmtDist(session.target_km)}</span>
+            {movedFromLabel(session) && <span className="moved-session-tag">{movedFromLabel(session)}</span>}
             {logged && <span className="cal-logged-dot" />}
           </Link>
         );
@@ -507,12 +560,14 @@ function WeekCalendarSection({
   active,
   warnings,
   registerRef,
+  onMoveSession,
 }: {
   plan: SavedPlan;
   weekIndex: number;
   active: boolean;
   warnings: string[];
   registerRef?: (node: HTMLElement | null) => void;
+  onMoveSession: (source: PlanSessionSlot, target: PlanSessionSlot) => void;
 }) {
   const week = plan.plan.weeks[weekIndex];
   return (
@@ -524,7 +579,7 @@ function WeekCalendarSection({
           <h3>Week {weekIndex + 1} · {formatWeekRange(week)} · {week.total_km.toFixed(0)} km</h3>
         </div>
       </div>
-      <CalendarGrid plan={plan} weekIndex={weekIndex} />
+      <CalendarGrid plan={plan} weekIndex={weekIndex} onMoveSession={onMoveSession} />
       {warnings.length > 0 && (
         <div className="plan-warnings panel continuous-week-warnings">
           {warnings.map((warning, index) => (
@@ -622,6 +677,7 @@ function WeekCard({
                       {SESSION_LABELS[s.type]}
                       {s.target_km ? ` · ${s.target_km.toFixed(1)} km` : ""}
                     </span>
+                    {movedFromLabel(s) && <em className="moved-session-inline">{movedFromLabel(s)}</em>}
                   </span>
                   <ChevronRight size={14} style={{ marginLeft: "auto", flexShrink: 0 }} />
                 </Link>
@@ -1129,6 +1185,7 @@ export default function PlanDetailPage() {
   const [selectedEvent, setSelectedEvent] = useState<AdaptationEvent | null>(null);
   const [pngPreset, setPngPreset] = useState<PlanWeekImagePreset>("landscape");
   const [exportOpen, setExportOpen] = useState(false);
+  const [moveMessage, setMoveMessage] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [settings, setSettings] = useState<UserSettings>(getSettings());
   const weekSectionRefs = useRef<Record<number, HTMLElement | null>>({});
@@ -1217,6 +1274,18 @@ export default function PlanDetailPage() {
     }
   }
 
+  function handleMoveSession(source: PlanSessionSlot, target: PlanSessionSlot) {
+    if (!plan) return;
+    if (source.weekIndex === target.weekIndex && source.dayIndex === target.dayIndex) return;
+    try {
+      const updated = movePlannedSessionDate(plan.id, source, target);
+      setPlan(updated);
+      setMoveMessage("Workout date updated.");
+    } catch (err) {
+      setMoveMessage(err instanceof Error ? err.message : "Could not move that workout.");
+    }
+  }
+
   return (
     <>
       <div className="page-header">
@@ -1244,6 +1313,11 @@ export default function PlanDetailPage() {
       </div>
 
       <PlanSummary plan={plan} settings={settings} />
+      {moveMessage && (
+        <div className="adapt-banner" style={{ marginBottom: 18 }}>
+          {moveMessage}
+        </div>
+      )}
       {planWarnings.length > 0 && (
         <div className="plan-warnings panel" style={{ marginBottom: 18 }}>
           {planWarnings.map((warning, index) => (
@@ -1345,6 +1419,7 @@ export default function PlanDetailPage() {
                     weekIndex={i}
                     active={i === weekIndex}
                     warnings={warningsByWeekNumber[i + 1] ?? []}
+                    onMoveSession={handleMoveSession}
                     registerRef={(node) => {
                       if (node) node.dataset.weekIndex = String(i);
                       weekSectionRefs.current[i] = node;

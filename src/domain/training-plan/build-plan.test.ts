@@ -35,6 +35,21 @@ function raceDistanceM(goalRace: GoalRace): number {
   }[goalRace];
 }
 
+function raceDistanceKm(goalRace: GoalRace): number {
+  return raceDistanceM(goalRace) / 1000;
+}
+
+function hasRace(week: TrainingPlan["weeks"][number]): boolean {
+  return week.sessions.some((session) => session.type === "race");
+}
+
+function comparableTaperKm(week: TrainingPlan["weeks"][number]): number {
+  const raceKm = week.sessions
+    .filter((session) => session.type === "race")
+    .reduce((sum, session) => sum + (session.target_km ?? 0), 0);
+  return Math.round((week.total_km - raceKm) * 10) / 10;
+}
+
 // ---------------------------------------------------------------------------
 // VDOT tests
 // ---------------------------------------------------------------------------
@@ -112,21 +127,23 @@ function assertPlanInvariants(plan: TrainingPlan, goalRace: GoalRace, level: Lev
   }
   for (let i = firstTaperIdx; i <= taperIdx; i++) {
     if (i > 0) {
-      expect(volumes[i]).toBeLessThanOrEqual(volumes[i - 1]);
+      expect(comparableTaperKm(weeks[i])).toBeLessThanOrEqual(comparableTaperKm(weeks[i - 1]));
     }
   }
 
   // Long run ≤ 33% of weekly volume
   for (const w of weeks) {
+    if (hasRace(w)) continue;
     if (w.total_km > 0) {
       expect(w.long_run_km / w.total_km).toBeLessThanOrEqual(0.35);
     }
   }
 
-  // Taper final week ≥ 40% reduction from peak
+  // Final taper training volume drops clearly; the race distance itself is
+  // counted separately in the race-week total.
   const peakVol = Math.max(...volumes);
   const taperWeeks = weeks.filter(w => w.phase === "taper");
-  const finalTaperVol = taperWeeks[taperWeeks.length - 1].total_km;
+  const finalTaperVol = comparableTaperKm(taperWeeks[taperWeeks.length - 1]);
   if (peakVol > 0) {
     const reduction = 1 - finalTaperVol / peakVol;
     expect(reduction).toBeGreaterThanOrEqual(0.38);
@@ -136,7 +153,7 @@ function assertPlanInvariants(plan: TrainingPlan, goalRace: GoalRace, level: Lev
   for (let i = 1; i < weeks.length; i++) {
     const prev = weeks[i - 1];
     const curr = weeks[i];
-    if (!curr.is_deload && curr.phase !== "taper") {
+    if (!prev.is_deload && !curr.is_deload && curr.phase !== "taper" && !hasRace(curr)) {
       const volUp = curr.total_km > prev.total_km;
       const qualUp = curr.quality_count > prev.quality_count;
       expect(volUp && qualUp).toBe(false);
@@ -707,13 +724,13 @@ test.each(MILEAGE_MATRIX)(
     const nonTaperPeak = Math.max(
       ...plan.weeks.filter((w) => w.phase !== "taper").map((w) => w.total_km)
     );
-    const finalTaper = taperWeeks[taperWeeks.length - 1].total_km;
-    // The final taper week is at most 70% of the pre-taper peak — a meaningful
-    // reduction from the actual peak, not a theoretical one.
+    const finalTaper = comparableTaperKm(taperWeeks[taperWeeks.length - 1]);
+    // The final taper week's pre-race training load is at most 70% of the
+    // pre-taper peak. Race distance is intentionally counted separately.
     expect(finalTaper).toBeLessThanOrEqual(nonTaperPeak * 0.7);
-    // Taper is monotonically non-increasing.
+    // Taper training load is monotonically non-increasing.
     for (let i = 1; i < taperWeeks.length; i++) {
-      expect(taperWeeks[i].total_km).toBeLessThanOrEqual(taperWeeks[i - 1].total_km);
+      expect(comparableTaperKm(taperWeeks[i])).toBeLessThanOrEqual(comparableTaperKm(taperWeeks[i - 1]));
     }
   }
 );
@@ -741,3 +758,85 @@ test.each(MILEAGE_MATRIX)(
     expect(plan.meta.peak_weekly_km).toBeGreaterThanOrEqual(plan.weeks[0].total_km);
   }
 );
+
+test("deload weeks reduce mileage and run count without removing quality stimulus", () => {
+  const plan = buildPlan({
+    ...INTERMEDIATE_HALF,
+    goal_date: futureDate(18),
+    days_per_week: 5,
+    self_selected_level: "intermediate",
+  });
+  const deloadIndex = plan.weeks.findIndex((week) => week.is_deload && week.phase !== "base");
+
+  expect(deloadIndex).toBeGreaterThan(0);
+  const deload = plan.weeks[deloadIndex];
+  const previous = plan.weeks[deloadIndex - 1];
+  const runCount = deload.sessions.filter((session) => session.type !== "rest").length;
+
+  expect(deload.total_km).toBeLessThan(previous.total_km);
+  expect(runCount).toBeLessThan(INTERMEDIATE_HALF.days_per_week);
+  expect(deload.quality_count).toBeGreaterThanOrEqual(1);
+  expect(deload.sessions.some((session) =>
+    session.session_role === "quality"
+    && session.stimulus !== "aerobic"
+    && session.stimulus !== "recovery"
+  )).toBe(true);
+});
+
+test("post-deload weeks rebound instead of freezing at deload mileage", () => {
+  const plan = buildPlan({
+    ...INTERMEDIATE_HALF,
+    goal_date: futureDate(18),
+    days_per_week: 5,
+    self_selected_level: "intermediate",
+  });
+  const deloadIndex = plan.weeks.findIndex((week, index) =>
+    index < plan.weeks.length - 1
+    && week.is_deload
+    && plan.weeks[index + 1].phase !== "taper"
+  );
+
+  expect(deloadIndex).toBeGreaterThan(0);
+  expect(plan.weeks[deloadIndex + 1].total_km).toBeGreaterThan(plan.weeks[deloadIndex].total_km);
+});
+
+test("race week uses fewer run days and carries the race distance", () => {
+  const plan = buildPlan({
+    ...INTERMEDIATE_HALF,
+    goal_race: "10K",
+    goal_date: futureDate(10),
+    current_weekly_km: 45,
+    longest_recent_km: 14,
+    days_per_week: 5,
+    self_selected_level: "intermediate",
+  });
+  const raceWeek = plan.weeks.at(-1)!;
+  const race = raceWeek.sessions.find((session) => session.type === "race");
+  const runCount = raceWeek.sessions.filter((session) => session.type !== "rest").length;
+
+  expect(race).toBeDefined();
+  expect(race?.target_km).toBe(raceDistanceKm("10K"));
+  expect(runCount).toBeLessThan(plan.meta.weeks_total > 1 ? 5 : 6);
+  expect(raceWeek.sessions.some((session) => session.session_role === "long")).toBe(false);
+});
+
+test("normal weeks vary daily run mileage instead of cloning every easy run", () => {
+  const plan = buildPlan({
+    ...INTERMEDIATE_HALF,
+    goal_date: futureDate(18),
+    days_per_week: 5,
+    self_selected_level: "intermediate",
+  });
+  const week = plan.weeks.find((candidate) =>
+    candidate.phase === "build"
+    && !candidate.is_deload
+    && !hasRace(candidate)
+    && candidate.sessions.filter((session) => session.session_role === "easy").length >= 2
+  );
+
+  expect(week).toBeDefined();
+  const easyDistances = week!.sessions
+    .filter((session) => session.session_role === "easy")
+    .map((session) => session.target_km);
+  expect(new Set(easyDistances).size).toBeGreaterThan(1);
+});

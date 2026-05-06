@@ -1611,6 +1611,14 @@ button {
   transition: background 0.15s;
 }
 
+.cal-cell.active-session[draggable="true"] {
+  cursor: grab;
+}
+
+.cal-cell.active-session[draggable="true"]:active {
+  cursor: grabbing;
+}
+
 .cal-cell.active-session:hover {
   background: color-mix(in srgb, var(--session-color, transparent) 14%, rgba(255,255,255,0.04));
 }
@@ -1643,6 +1651,19 @@ button {
 .cal-session-dist {
   font-size: 12px;
   color: var(--muted);
+}
+
+.moved-session-tag {
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-transform: uppercase;
 }
 
 .cal-rest-label {
@@ -1740,6 +1761,14 @@ button {
 
 .week-session-main span {
   color: var(--muted);
+}
+
+.moved-session-inline {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .week-session-main strong {

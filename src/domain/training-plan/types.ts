@@ -111,6 +111,8 @@ export interface PlannedSession {
   warmup: string | null;
   main_set: string | null;
   cooldown: string | null;
+  moved_from_week_index?: number | null;
+  moved_from_day_index?: number | null;
 }
 
 export interface TrainingWeek {

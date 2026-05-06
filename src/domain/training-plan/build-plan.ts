@@ -63,7 +63,20 @@ const DIFFICULTY_PEAK_MULTIPLIER: Record<NonNullable<PlanInputs["difficulty_pref
 
 const DELOAD_EVERY_N_WEEKS = 4;
 const DELOAD_FACTOR = 0.75;
-const TAPER_VOLUME_FACTOR = 0.50;
+
+const TAPER_START_VOLUME_FACTOR: Record<GoalRace, number> = {
+  "5K": 0.70,
+  "10K": 0.70,
+  "half": 0.80,
+  "marathon": 0.85,
+};
+
+const TAPER_FINAL_VOLUME_FACTOR: Record<GoalRace, number> = {
+  "5K": 0.50,
+  "10K": 0.55,
+  "half": 0.60,
+  "marathon": 0.70,
+};
 
 const TAPER_WEEKS: Record<GoalRace, number> = {
   "5K": 1, "10K": 1, "half": 2, "marathon": 3,
@@ -114,6 +127,15 @@ function nextMonday(from: Date): Date {
 
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
+}
+
+function raceDistanceKm(goalRace: GoalRace): number {
+  return {
+    "5K": 5,
+    "10K": 10,
+    half: 21.1,
+    marathon: 42.2,
+  }[goalRace];
 }
 
 // ---------------------------------------------------------------------------
@@ -167,11 +189,20 @@ function buildVolumeCurve(
   weeksTotal: number,
   progressionRate: number,
   phases: Phase[],
+  goalRace: GoalRace,
 ): number[] {
   const taperStart = phases.indexOf("taper");
   const effectiveTaperStart = taperStart === -1 ? weeksTotal : taperStart;
   const taperCount = weeksTotal - effectiveTaperStart;
-  let loadWkCount = 0;
+  const deloadFlags = deloadFlagsForPhases(phases);
+  const loadWeekIndexes = phases
+    .map((phase, index) => phase === "taper" ? -1 : index)
+    .filter((index) => index >= 0);
+  const growthWeekIndexes = loadWeekIndexes.filter((index) => !deloadFlags[index]);
+  const growthWeekCount = Math.max(1, growthWeekIndexes.length);
+  const safeStartKm = Math.max(1, startKm);
+  const peakRatio = Math.max(1, peakKm / safeStartKm);
+  let growthPosition = 0;
   let lastLoadVolume = startKm;
   let actualPeak = startKm;
   const volumes: number[] = [];
@@ -180,12 +211,14 @@ function buildVolumeCurve(
     const phase = phases[i];
     if (phase === "taper") {
       const taperIndex = i - effectiveTaperStart;
-      let vol: number;
+      const startFactor = TAPER_START_VOLUME_FACTOR[goalRace];
+      const finalFactor = TAPER_FINAL_VOLUME_FACTOR[goalRace];
+      const factor = taperCount === 1
+        ? finalFactor
+        : startFactor + (finalFactor - startFactor) * (taperIndex / (taperCount - 1));
+      let vol = round1(actualPeak * factor);
       if (taperCount === 1) {
-        vol = round1(actualPeak * TAPER_VOLUME_FACTOR);
-      } else {
-        const frac = 1.0 - (taperIndex / (taperCount - 1)) * (1.0 - TAPER_VOLUME_FACTOR);
-        vol = round1(actualPeak * frac);
+        vol = round1(actualPeak * finalFactor);
       }
       const previous = volumes.at(-1);
       if (previous !== undefined) {
@@ -193,16 +226,26 @@ function buildVolumeCurve(
       }
       volumes.push(vol);
     } else {
-      loadWkCount++;
       let vol: number;
       if (i === 0) {
         vol = startKm;
-      } else if (loadWkCount % DELOAD_EVERY_N_WEEKS === 0) {
+      } else if (deloadFlags[i]) {
         vol = round1(lastLoadVolume * DELOAD_FACTOR);
       } else {
-        vol = round1(Math.min(lastLoadVolume * (1 + progressionRate), peakKm));
+        const denominator = Math.max(1, growthWeekCount - 1);
+        const exponent = growthPosition / denominator;
+        const smoothTarget = round1(safeStartKm * Math.pow(peakRatio, exponent));
+        vol = growthPosition === growthWeekCount - 1
+          ? round1(peakKm)
+          : smoothTarget;
+        if (i > 0) {
+          vol = Math.min(vol, round1(lastLoadVolume * (1 + progressionRate)));
+        }
+      }
+      if (!deloadFlags[i]) {
         lastLoadVolume = vol;
         actualPeak = Math.max(actualPeak, vol);
+        growthPosition++;
       }
       volumes.push(vol);
     }
@@ -292,7 +335,16 @@ function sustainablePeakKm(args: {
     ? ambitionCap
     : Math.min(ambitionCap, Math.max(growablePeak, levelFloorKm));
 
-  return round1(Math.min(readinessAwareCap, growablePeak));
+  const deloadFlags = deloadFlagsForPhases(phases);
+  const growthSteps = phases
+    .slice(1)
+    .filter((phase, index) => phase !== "taper" && !deloadFlags[index + 1])
+    .length;
+  const rampReachablePeak = round1(
+    currentWeeklyKm * Math.pow(1 + progressionRate, growthSteps),
+  );
+
+  return round1(Math.min(readinessAwareCap, rampReachablePeak));
 }
 
 function constrainVolumesForSessionCap(
@@ -358,6 +410,124 @@ function buildRecipeSession(
   };
 }
 
+function raceSession(di: number, d: Date, goalRace: GoalRace): PlannedSession {
+  const raceGoalLabel: Record<GoalRace, string> = {
+    "5K": "5K", "10K": "10K", half: "Half Marathon", marathon: "Marathon",
+  };
+  const raceKm = raceDistanceKm(goalRace);
+  return {
+    day_index: di,
+    date: isoDate(d),
+    type: "race",
+    session_role: undefined,
+    recipe_id: null,
+    recipe_family: null,
+    stimulus: null,
+    target_km: raceKm,
+    target_duration_min: null,
+    pace_low_s_km: null,
+    pace_high_s_km: null,
+    hr_zone: null,
+    target_rpe: null,
+    description: `Race day - ${raceGoalLabel[goalRace]}. Trust the taper. Warm up easy, run your goal pace, race smart.`,
+    rationale: "This is what the plan has been building toward. The final week reduces training load so you arrive fresh.",
+    warmup: "10-15 min very easy jog with 4x20 s strides.",
+    main_set: `${raceGoalLabel[goalRace]} - race at goal effort.`,
+    cooldown: "10 min easy walk/jog.",
+  };
+}
+
+function plannedRunDayCount(
+  daysPerWeek: number,
+  phase: Phase,
+  isDeload: boolean,
+  isRaceWeek: boolean,
+  goalRace: GoalRace,
+): number {
+  let runDays = daysPerWeek;
+  if (isRaceWeek) {
+    const raceWeekCap = goalRace === "5K" || goalRace === "10K" ? 3 : 4;
+    runDays = Math.min(runDays, raceWeekCap);
+  } else {
+    if (isDeload && runDays >= 4) runDays -= 1;
+    if (phase === "taper" && runDays >= 4) runDays -= 1;
+  }
+  return Math.max(isRaceWeek ? 1 : 2, Math.min(7, runDays));
+}
+
+function qualityCountForWeek(args: {
+  weekIndex: number;
+  phase: Phase;
+  level: Level;
+  totalKm: number;
+  isDeload: boolean;
+  effectiveRunDays: number;
+  isRaceWeek: boolean;
+  raceDayIndex: number | null;
+}): number {
+  const {
+    weekIndex,
+    phase,
+    level,
+    totalKm,
+    isDeload,
+    effectiveRunDays,
+    isRaceWeek,
+    raceDayIndex,
+  } = args;
+  let count = QUALITY_COUNT[phase][level];
+
+  if (level === "beginner" && weekIndex <= 4) count = 0;
+  if (level === "intermediate" && count > 1 && (totalKm < 42 || effectiveRunDays < 5)) {
+    count = 1;
+  }
+  if (level === "advanced") {
+    if (count > 2 && (totalKm < 75 || effectiveRunDays < 6)) count = 2;
+    if (count > 1 && totalKm < 55) count = 1;
+  }
+  if (isDeload && count > 0) count = 1;
+  if (phase === "taper" && count > 0) count = 1;
+  if (isRaceWeek) {
+    count = raceDayIndex !== null && raceDayIndex >= 4 ? Math.min(count, 1) : 0;
+  }
+
+  const requiredRaceOrLong = 1;
+  const shouldLeaveEasyDay = effectiveRunDays >= 3 ? 1 : 0;
+  const maxQuality = Math.max(0, effectiveRunDays - requiredRaceOrLong - shouldLeaveEasyDay);
+  return Math.max(0, Math.min(count, maxQuality));
+}
+
+function allocateVariableKm(
+  remainingKm: number,
+  slots: { day: number; role: "quality" | "easy" }[],
+  phase: Phase,
+  isDeload: boolean,
+  isRaceWeek: boolean,
+): Map<number, number> {
+  const result = new Map<number, number>();
+  if (slots.length === 0) return result;
+
+  const easyWeights = [0.86, 1.04, 0.94, 1.14, 0.78, 1.08];
+  let easyIndex = 0;
+  const weights = slots.map((slot) => {
+    if (slot.role === "quality") return isRaceWeek ? 1.08 : isDeload ? 1.12 : 1.22;
+    const base = easyWeights[easyIndex++ % easyWeights.length];
+    return phase === "taper" || isDeload ? base * 0.95 : base;
+  });
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  const distances = weights.map((weight) => round1(Math.max(0, remainingKm * weight / totalWeight)));
+  const diff = round1(remainingKm - distances.reduce((sum, km) => sum + km, 0));
+  if (Math.abs(diff) >= 0.1) {
+    const adjustIndex = distances
+      .map((km, index) => ({ km, index }))
+      .sort((a, b) => b.km - a.km)[0]?.index ?? distances.length - 1;
+    distances[adjustIndex] = round1(Math.max(0, distances[adjustIndex] + diff));
+  }
+
+  slots.forEach((slot, index) => result.set(slot.day, distances[index]));
+  return result;
+}
+
 function layoutWeek(
   weekIndex: number,
   weekStart: Date,
@@ -373,23 +543,41 @@ function layoutWeek(
   trainingFocus: PlanInputs["training_focus"],
   difficultyPreference: PlanInputs["difficulty_preference"],
   recentQualityRecipeIds: string[],
+  raceDayIndex: number | null,
 ): PlannedSession[] {
   const longDayIdx = dayIndex(longRunDay);
-  let qualityCount = isDeload ? 0 : QUALITY_COUNT[phase][level];
-  // Beginners: no I/R sessions in first 4 weeks
-  if (level === "beginner" && weekIndex <= 4) {
-    qualityCount = 0;
-  }
+  const isRaceWeek = raceDayIndex !== null;
+  const effectiveRunDays = plannedRunDayCount(daysPerWeek, phase, isDeload, isRaceWeek, goalRace);
+  let qualityCount = qualityCountForWeek({
+    weekIndex,
+    phase,
+    level,
+    totalKm,
+    isDeload,
+    effectiveRunDays,
+    isRaceWeek,
+    raceDayIndex,
+  });
 
   const restAfterLong = (longDayIdx % 7) + 1;
   const dayBeforeLong = longDayIdx === 1 ? 7 : longDayIdx - 1;
-  const usedDays = new Set([longDayIdx, restAfterLong]);
+  const usedDays = new Set<number>();
+  if (isRaceWeek) {
+    usedDays.add(raceDayIndex);
+    if (raceDayIndex > 1) usedDays.add(raceDayIndex - 1);
+    if (raceDayIndex < 7) usedDays.add(raceDayIndex + 1);
+  } else {
+    usedDays.add(longDayIdx);
+    usedDays.add(restAfterLong);
+  }
 
   const qDays: number[] = [];
   for (let d = 1; d <= 7 && qDays.length < qualityCount; d++) {
+    const tooCloseToRace = raceDayIndex !== null && Math.abs(d - raceDayIndex) <= 2;
     if (
       !usedDays.has(d)
-      && d !== dayBeforeLong
+      && (isRaceWeek || d !== dayBeforeLong)
+      && !tooCloseToRace
       && !qDays.some(q => Math.abs(d - q) <= 1)
     ) {
       qDays.push(d);
@@ -398,16 +586,27 @@ function layoutWeek(
   }
 
   qualityCount = qDays.length;
-  const easyDays = Math.max(0, daysPerWeek - 1 - qualityCount);
-  const easyKm = round1((totalKm - longRunKm) / Math.max(easyDays + qualityCount, 1));
+  const fixedRaceOrLongKm = isRaceWeek ? raceDistanceKm(goalRace) : longRunKm;
+  const easyDays = Math.max(0, effectiveRunDays - 1 - qualityCount);
 
   const eDays: number[] = [];
   for (let d = 1; d <= 7 && eDays.length < easyDays; d++) {
-    if (!usedDays.has(d)) {
+    if (!usedDays.has(d) && (!isRaceWeek || d < raceDayIndex!)) {
       eDays.push(d);
       usedDays.add(d);
     }
   }
+  const variableSlots = [
+    ...qDays.map((day) => ({ day, role: "quality" as const })),
+    ...eDays.map((day) => ({ day, role: "easy" as const })),
+  ].sort((a, b) => a.day - b.day);
+  const targetKmByDay = allocateVariableKm(
+    round1(Math.max(0, totalKm - fixedRaceOrLongKm)),
+    variableSlots,
+    phase,
+    isDeload,
+    isRaceWeek,
+  );
 
   const sessions: PlannedSession[] = [];
   for (let di = 1; di <= 7; di++) {
@@ -415,7 +614,9 @@ function layoutWeek(
     const ctx: WorkoutContext = {
       dayIndex: di,
       date: sessionDate,
-      targetKm: di === longDayIdx ? longRunKm : easyKm,
+      targetKm: di === longDayIdx && !isRaceWeek
+        ? longRunKm
+        : targetKmByDay.get(di) ?? 0,
       paces,
       level,
       phase,
@@ -424,7 +625,9 @@ function layoutWeek(
       weekIndex,
     };
 
-    if (di === longDayIdx) {
+    if (isRaceWeek && di === raceDayIndex) {
+      sessions.push(raceSession(di, sessionDate, goalRace));
+    } else if (!isRaceWeek && di === longDayIdx) {
       const recipe = selectWorkoutRecipe({
         target: "long",
         ctx,
@@ -439,7 +642,7 @@ function layoutWeek(
             : undefined,
       });
       sessions.push(buildRecipeSession(recipe, ctx, "long"));
-    } else if (di === restAfterLong) {
+    } else if (!isRaceWeek && di === restAfterLong) {
       sessions.push(restSession(di, sessionDate));
     } else if (qDays.includes(di)) {
       const recipe = selectWorkoutRecipe({
@@ -449,6 +652,7 @@ function layoutWeek(
         recentRecipeIds: recentQualityRecipeIds,
         trainingFocus,
         difficultyPreference,
+        maxStressScore: isDeload || phase === "taper" ? 3 : undefined,
       });
       recentQualityRecipeIds.push(recipe.id);
       sessions.push(buildRecipeSession(recipe, ctx, "quality"));
@@ -483,11 +687,19 @@ function computeAcwr(weekIndex: number, volumes: number[]): number | null {
   return Math.round((acute / chronic) * 100) / 100;
 }
 
+function raceDayIndexForWeek(weekStart: Date, goalIso: string): number | null {
+  for (let di = 1; di <= 7; di++) {
+    if (isoDate(addDays(weekStart, di - 1)) === goalIso) return di;
+  }
+  return null;
+}
+
 function buildWeeksFromVolumes(args: {
   volumes: number[];
   phases: Phase[];
   deloadFlags: boolean[];
   planStart: Date;
+  goalDate: string;
   goalRace: GoalRace;
   level: Level;
   daysPerWeek: number;
@@ -502,6 +714,7 @@ function buildWeeksFromVolumes(args: {
     phases,
     deloadFlags,
     planStart,
+    goalDate,
     goalRace,
     level,
     daysPerWeek,
@@ -520,14 +733,22 @@ function buildWeeksFromVolumes(args: {
   for (let i = 0; i < volumes.length; i++) {
     const phase = phases[i];
     const isDeload = deloadFlags[i];
-    const vol = volumes[i];
-    const longRunKm = round1(Math.min(
-      vol * 0.30,
-      LONG_RUN_CAP_KM[goalRace],
-      maxSessionKm ?? Number.POSITIVE_INFINITY,
-    ));
-    const acwr = computeAcwr(i, volumes);
+    let vol = volumes[i];
     const weekStart = addDays(planStart, i * 7);
+    const raceDayIndex = raceDayIndexForWeek(weekStart, goalDate);
+    if (raceDayIndex !== null) {
+      const raceWeekRunDays = plannedRunDayCount(daysPerWeek, phase, isDeload, true, goalRace);
+      const preRaceMinimumKm = (raceWeekRunDays - 1) * (goalRace === "marathon" ? 3 : 2.5);
+      vol = round1(Math.max(vol, raceDistanceKm(goalRace) + preRaceMinimumKm));
+      volumes[i] = vol;
+    }
+    const longRunKm = raceDayIndex !== null
+      ? raceDistanceKm(goalRace)
+      : round1(Math.min(
+          vol * 0.30,
+          LONG_RUN_CAP_KM[goalRace],
+          maxSessionKm ?? Number.POSITIVE_INFINITY,
+        ));
     const recentQualityRecipeIds = weeks
       .slice(-3)
       .flatMap(w => w.sessions)
@@ -541,8 +762,10 @@ function buildWeeksFromVolumes(args: {
       trainingFocus ?? "balanced",
       difficultyPreference ?? "balanced",
       recentQualityRecipeIds,
+      raceDayIndex,
     );
 
+    const acwr = computeAcwr(i, volumes);
     const qualityCount = sessions.filter(
       s => s.session_role === "quality"
     ).length;
@@ -566,7 +789,7 @@ function buildWeeksFromVolumes(args: {
 // Guardrails
 // ---------------------------------------------------------------------------
 
-function validatePlan(weeks: TrainingWeek[], volumes: number[]): string[] {
+function validatePlan(weeks: TrainingWeek[], volumes: number[], goalRace: GoalRace): string[] {
   const warnings: string[] = [];
   const peakVol = Math.max(...volumes);
   let deloadGap = 0;
@@ -574,8 +797,9 @@ function validatePlan(weeks: TrainingWeek[], volumes: number[]): string[] {
   for (let i = 0; i < weeks.length; i++) {
     const week = weeks[i];
     const { total_km, long_run_km, acwr, is_deload, phase, week_index } = week;
+    const isRaceWeek = week.sessions.some((session) => session.type === "race");
 
-    if (total_km > 0) {
+    if (total_km > 0 && !isRaceWeek) {
       const lrPct = long_run_km / total_km;
       if (lrPct > 0.34) {
         warnings.push(
@@ -587,7 +811,7 @@ function validatePlan(weeks: TrainingWeek[], volumes: number[]): string[] {
       }
     }
 
-    if (acwr !== null && acwr > 1.3) {
+    if (!isRaceWeek && acwr !== null && acwr > 1.3) {
       warnings.push(formatWeekWarning(week_index, "training load rises faster than the recent four-week baseline. Keep this week controlled or reduce volume."));
     }
 
@@ -603,9 +827,10 @@ function validatePlan(weeks: TrainingWeek[], volumes: number[]): string[] {
   if (taperWeeks.length && peakVol > 0) {
     const finalVol = taperWeeks[taperWeeks.length - 1].total_km;
     const reduction = 1 - finalVol / peakVol;
-    if (reduction < 0.38) {
+    const minimumReduction = goalRace === "marathon" ? 0.15 : 0.38;
+    if (reduction < minimumReduction) {
       warnings.push(
-        `Taper final week ${finalVol.toFixed(0)} km is only ${Math.round(reduction * 100)}% below peak. Target a clearer 40–60% reduction.`
+        `Taper final week ${finalVol.toFixed(0)} km is only ${Math.round(reduction * 100)}% below peak. Target a clearer race-week reduction.`
       );
     }
   }
@@ -672,7 +897,7 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
   // from setHours do not shift the plan start date.
   const planStartDay = Math.trunc(planStartAligned.getTime() / msPerDay) * msPerDay;
   const goalDay = Math.trunc(goalDateObj.getTime() / msPerDay) * msPerDay;
-  const weeksTotal = Math.max(1, Math.ceil((goalDay - planStartDay) / msPerWeek));
+  const weeksTotal = Math.max(1, Math.floor((goalDay - planStartDay) / msPerWeek) + 1);
   const taperWks = TAPER_WEEKS[goal_race];
   const minWks = MIN_WEEKS[goal_race][level];
   const shortRunwayWarning = weeksTotal < minWks
@@ -707,7 +932,7 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
     injuryFlags,
     progressiveSupported,
   });
-  let volumes = buildVolumeCurve(current_weekly_km, peakKm, weeksTotal, progressionRate, phases);
+  let volumes = buildVolumeCurve(current_weekly_km, peakKm, weeksTotal, progressionRate, phases, goal_race);
   const capped = constrainVolumesForSessionCap(
     volumes,
     inputs.session_minutes_cap,
@@ -726,6 +951,7 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
     phases,
     deloadFlags,
     planStart,
+    goalDate: goal_date,
     goalRace: goal_race,
     level,
     daysPerWeek: days_per_week,
@@ -742,7 +968,7 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
     for (let i = 1; i < weeks.length; i++) {
       const prev = weeks[i - 1];
       const curr = weeks[i];
-      if (curr.is_deload || curr.phase === "taper") continue;
+      if (prev.is_deload || curr.is_deload || curr.phase === "taper") continue;
       if (curr.total_km > prev.total_km && curr.quality_count > prev.quality_count) {
         volumes[i] = prev.total_km;
         adjustedForQualityLoad = true;
@@ -755,6 +981,7 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
       phases,
       deloadFlags,
       planStart,
+      goalDate: goal_date,
       goalRace: goal_race,
       level,
       daysPerWeek: days_per_week,
@@ -784,6 +1011,7 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
       phases,
       deloadFlags,
       planStart,
+      goalDate: goal_date,
       goalRace: goal_race,
       level,
       daysPerWeek: days_per_week,
@@ -793,43 +1021,6 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
       difficultyPreference,
       sessionMinutesCap: inputs.session_minutes_cap,
     });
-  }
-
-  // 7d. Insert race-day session on goal_date in the final week.
-  const goalIso = isoDate(goalDateObj);
-  const lastWeek = weeks[weeks.length - 1];
-  if (lastWeek) {
-    const raceGoalLabel: Record<GoalRace, string> = {
-      "5K": "5K", "10K": "10K", half: "Half Marathon", marathon: "Marathon",
-    };
-    const raceSession: PlannedSession = {
-      day_index: lastWeek.sessions.find((s) => s.date === goalIso)?.day_index
-        ?? ((lastWeek.sessions[lastWeek.sessions.length - 1]?.day_index ?? 6) + 1),
-      date: goalIso,
-      type: "race",
-      session_role: undefined,
-      recipe_id: null,
-      recipe_family: null,
-      stimulus: null,
-      target_km: null,
-      target_duration_min: null,
-      pace_low_s_km: null,
-      pace_high_s_km: null,
-      hr_zone: null,
-      target_rpe: null,
-      description: `Race day — ${raceGoalLabel[goal_race]}. Trust the taper. Warm up easy, run your goal pace, race smart.`,
-      rationale: "This is what the whole plan has been building toward. Your legs are fresh, the hay is in the barn. Run your race.",
-      warmup: "10–15 min very easy jog with 4×20 s strides.",
-      main_set: `${raceGoalLabel[goal_race]} — race at goal effort.`,
-      cooldown: "10 min easy walk/jog. Celebrate.",
-    };
-    // Replace an existing session on goal_date if present, otherwise push.
-    const existingIdx = lastWeek.sessions.findIndex((s) => s.date === goalIso);
-    if (existingIdx >= 0) {
-      lastWeek.sessions[existingIdx] = raceSession;
-    } else {
-      lastWeek.sessions.push(raceSession);
-    }
   }
 
   // 8. Validate
@@ -844,7 +1035,7 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
     ...(capped.capped
       ? [`Some weekly volume was capped because the session limit is ${inputs.session_minutes_cap} minutes.`]
       : []),
-    ...validatePlan(weeks, volumes),
+    ...validatePlan(weeks, volumes, goal_race),
   ];
   const nonTaperVolumes = volumes.filter((_, i) => phases[i] !== "taper");
   const actualPeakWeeklyKm = Math.max(...(nonTaperVolumes.length > 0 ? nonTaperVolumes : volumes));

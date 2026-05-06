@@ -31,6 +31,14 @@ function fmtPace(sKm: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+function boundedWorkoutKm(ctx: WorkoutContext, minKm: number, maxKm: number): number {
+  return round1(Math.max(minKm, Math.min(maxKm, ctx.targetKm)));
+}
+
 const ALL_RACES: GoalRace[] = ["5K", "10K", "half", "marathon"];
 const ALL_LEVELS: Level[] = ["beginner", "intermediate", "advanced"];
 const ALL_PHASES: Phase[] = ["base", "build", "peak", "taper"];
@@ -342,7 +350,7 @@ const cutbackLong: WorkoutRecipe = {
   tags: ["long", "deload", "recovery", "cutback"],
   cooldownWeeks: 0,
   build(ctx) {
-    const km = Math.max(6, Math.round(ctx.targetKm * 0.7 * 10) / 10);
+    const km = round1(Math.max(4, ctx.targetKm));
     return {
       day_index: ctx.dayIndex,
       date: isoDate(ctx.date),
@@ -381,13 +389,14 @@ const tempoContinuous: WorkoutRecipe = {
   cooldownWeeks: 2,
   build(ctx) {
     const tPace = ctx.paces.T ?? ctx.paces.E_low;
-    const durationMin = ctx.level === "advanced" ? 30 : 20;
-    const tempoKm = Math.round((durationMin * 60) / tPace * 10) / 10;
+    const km = boundedWorkoutKm(ctx, 5.5, ctx.level === "advanced" ? 12 : 9);
+    const tempoKm = Math.max(2, round1(km - 3));
+    const durationMin = Math.round((tempoKm * tPace) / 60);
     return {
       day_index: ctx.dayIndex,
       date: isoDate(ctx.date),
       type: "tempo",
-      target_km: tempoKm + 3,
+      target_km: km,
       target_duration_min: durationMin + 15,
       pace_low_s_km: tPace,
       pace_high_s_km: tPace,
@@ -417,13 +426,17 @@ const tempoCruise: WorkoutRecipe = {
   cooldownWeeks: 2,
   build(ctx) {
     const tPace = ctx.paces.T ?? ctx.paces.E_low;
-    const reps = ctx.level === "beginner" ? 3 : ctx.level === "intermediate" ? 4 : 5;
-    const repMin = 8;
+    const km = boundedWorkoutKm(ctx, 5.5, ctx.level === "advanced" ? 12 : 10);
+    const maxReps = ctx.level === "beginner" ? 3 : ctx.level === "intermediate" ? 4 : 5;
+    const repMin = ctx.level === "advanced" || ctx.phase === "taper" ? 6 : 8;
+    const availableWorkMin = Math.max(repMin * 2, Math.round(((km - 3) * tPace) / 60));
+    const reps = Math.max(2, Math.min(maxReps, Math.floor(availableWorkMin / repMin)));
+    const actualKm = round1((reps * repMin * 60) / tPace + 3);
     return {
       day_index: ctx.dayIndex,
       date: isoDate(ctx.date),
       type: "tempo",
-      target_km: Math.round(reps * repMin * 60 / tPace) + 3,
+      target_km: actualKm,
       target_duration_min: reps * repMin + reps + 15,
       pace_low_s_km: tPace,
       pace_high_s_km: tPace,
@@ -454,14 +467,16 @@ const tempoProgression: WorkoutRecipe = {
   build(ctx) {
     const tPace = ctx.paces.T ?? ctx.paces.E_low;
     const mPace = ctx.paces.M ?? ctx.paces.E_low;
-    const block1Km = 3;
-    const block2Km = 3;
-    const block3Km = 2;
+    const km = boundedWorkoutKm(ctx, 7, 12);
+    const workKm = Math.max(4, round1(km - 3));
+    const block1Km = round1(workKm * 0.4);
+    const block2Km = round1(workKm * 0.35);
+    const block3Km = round1(workKm - block1Km - block2Km);
     return {
       day_index: ctx.dayIndex,
       date: isoDate(ctx.date),
       type: "tempo",
-      target_km: block1Km + block2Km + block3Km + 3,
+      target_km: km,
       target_duration_min: Math.round((block1Km * mPace + block2Km * tPace + block3Km * (tPace - 5)) / 60) + 15,
       pace_low_s_km: mPace,
       pace_high_s_km: tPace - 5,
@@ -492,12 +507,13 @@ const tempoLadder: WorkoutRecipe = {
   build(ctx) {
     const tPace = ctx.paces.T ?? ctx.paces.E_low;
     const iPace = ctx.paces.I ?? ctx.paces.E_low;
+    const km = boundedWorkoutKm(ctx, 7, 10);
     return {
       day_index: ctx.dayIndex,
       date: isoDate(ctx.date),
       type: "tempo",
-      target_km: 10,
-      target_duration_min: 50,
+      target_km: km,
+      target_duration_min: Math.round(km * ctx.paces.E_high / 60) + 8,
       pace_low_s_km: tPace,
       pace_high_s_km: iPace,
       hr_zone: "Z4",
@@ -526,13 +542,16 @@ const tempoRacePace: WorkoutRecipe = {
   cooldownWeeks: 2,
   build(ctx) {
     const tPace = ctx.paces.T ?? ctx.paces.E_low;
-    const reps = ctx.goalRace === "5K" ? 3 : 4;
+    const km = boundedWorkoutKm(ctx, 6, ctx.goalRace === "5K" ? 8 : 10);
+    const reps = ctx.goalRace === "5K"
+      ? Math.max(2, Math.min(3, Math.floor((km - 3) / 1.5)))
+      : Math.max(2, Math.min(4, Math.floor((km - 3) / 2)));
     const repKm = ctx.goalRace === "5K" ? 1.5 : 2;
     return {
       day_index: ctx.dayIndex,
       date: isoDate(ctx.date),
       type: "tempo",
-      target_km: reps * repKm + 3,
+      target_km: round1(reps * repKm + 3),
       target_duration_min: Math.round(reps * repKm * tPace / 60) + 15,
       pace_low_s_km: tPace,
       pace_high_s_km: tPace,
@@ -566,12 +585,14 @@ const intervalShort: WorkoutRecipe = {
   cooldownWeeks: 2,
   build(ctx) {
     const iPace = ctx.paces.I ?? ctx.paces.E_low;
-    const reps = ctx.level === "advanced" ? 12 : 10;
+    const km = boundedWorkoutKm(ctx, 6, ctx.level === "advanced" ? 9 : 8);
+    const maxReps = ctx.level === "advanced" ? 12 : 10;
+    const reps = Math.max(6, Math.min(maxReps, Math.floor((km - 4) / 0.4)));
     return {
       day_index: ctx.dayIndex,
       date: isoDate(ctx.date),
       type: "interval",
-      target_km: reps * 0.4 + 4,
+      target_km: round1(reps * 0.4 + 4),
       target_duration_min: Math.round(reps * 0.4 * iPace / 60) + reps * 1.5 + 20,
       pace_low_s_km: iPace,
       pace_high_s_km: iPace,
@@ -601,12 +622,14 @@ const intervalMedium: WorkoutRecipe = {
   cooldownWeeks: 2,
   build(ctx) {
     const iPace = ctx.paces.I ?? ctx.paces.E_low;
-    const reps = ctx.level === "advanced" ? 8 : 6;
+    const km = boundedWorkoutKm(ctx, 6.5, ctx.level === "advanced" ? 10.5 : 9);
+    const maxReps = ctx.level === "advanced" ? 8 : 6;
+    const reps = Math.max(4, Math.min(maxReps, Math.floor((km - 4) / 0.8)));
     return {
       day_index: ctx.dayIndex,
       date: isoDate(ctx.date),
       type: "interval",
-      target_km: reps * 0.8 + 4,
+      target_km: round1(reps * 0.8 + 4),
       target_duration_min: Math.round(reps * 0.8 * iPace / 60) + reps * 2 + 20,
       pace_low_s_km: iPace,
       pace_high_s_km: iPace,
@@ -636,12 +659,14 @@ const intervalLong: WorkoutRecipe = {
   cooldownWeeks: 2,
   build(ctx) {
     const iPace = ctx.paces.I ?? ctx.paces.E_low;
-    const reps = ctx.level === "advanced" ? 6 : 5;
+    const km = boundedWorkoutKm(ctx, 7, ctx.level === "advanced" ? 10 : 9);
+    const maxReps = ctx.level === "advanced" ? 6 : 5;
+    const reps = Math.max(3, Math.min(maxReps, Math.floor(km - 4)));
     return {
       day_index: ctx.dayIndex,
       date: isoDate(ctx.date),
       type: "interval",
-      target_km: reps * 1.0 + 4,
+      target_km: round1(reps * 1.0 + 4),
       target_duration_min: Math.round(reps * 1.0 * iPace / 60) + reps * 2.5 + 20,
       pace_low_s_km: iPace,
       pace_high_s_km: iPace,
@@ -671,20 +696,22 @@ const intervalVo2: WorkoutRecipe = {
   cooldownWeeks: 3,
   build(ctx) {
     const iPace = ctx.paces.I ?? ctx.paces.E_low;
+    const km = boundedWorkoutKm(ctx, 8, 10);
+    const reps = Math.max(3, Math.min(4, Math.floor((km - 5) / 1.2)));
     return {
       day_index: ctx.dayIndex,
       date: isoDate(ctx.date),
       type: "interval",
-      target_km: 4 * 1.2 + 5,
-      target_duration_min: Math.round(4 * 1.2 * iPace / 60) + 4 * 3 + 20,
+      target_km: round1(reps * 1.2 + 5),
+      target_duration_min: Math.round(reps * 1.2 * iPace / 60) + reps * 3 + 20,
       pace_low_s_km: iPace,
       pace_high_s_km: iPace,
       hr_zone: "Z5",
       target_rpe: 9,
-      description: "4×1200 m at I pace. Extended VO₂max reps for advanced runners.",
+      description: `${reps}×1200 m at I pace. Extended VO₂max reps for advanced runners.`,
       rationale: "Extended intervals are demanding, so they are reserved for advanced runners who can absorb the load.",
       warmup: "10 min easy jog",
-      main_set: `4×1200 m at I pace (${fmtPace(iPace)} /km) with 400 m easy jog recovery`,
+      main_set: `${reps}×1200 m at I pace (${fmtPace(iPace)} /km) with 400 m easy jog recovery`,
       cooldown: "10 min easy jog",
     };
   },
@@ -706,12 +733,13 @@ const hills: WorkoutRecipe = {
   build(ctx) {
     const reps = ctx.level === "advanced" ? 10 : 8;
     const rPace = ctx.paces.R ?? ctx.paces.E_low;
+    const km = boundedWorkoutKm(ctx, 5, 7);
     return {
       day_index: ctx.dayIndex,
       date: isoDate(ctx.date),
       type: "hills",
-      target_km: 6,
-      target_duration_min: 40,
+      target_km: km,
+      target_duration_min: Math.round(km * ctx.paces.E_high / 60) + 8,
       pace_low_s_km: rPace,
       pace_high_s_km: rPace,
       hr_zone: "Z4",
@@ -775,20 +803,22 @@ const intervalBeginnerFriendly: WorkoutRecipe = {
   cooldownWeeks: 2,
   build(ctx) {
     const iPace = ctx.paces.I ?? ctx.paces.E_low;
+    const km = boundedWorkoutKm(ctx, 5.5, 7);
+    const reps = Math.max(4, Math.min(6, Math.floor((km - 4) / 0.4)));
     return {
       day_index: ctx.dayIndex,
       date: isoDate(ctx.date),
       type: "interval",
-      target_km: 6 * 0.4 + 4,
-      target_duration_min: Math.round(6 * 0.4 * iPace / 60) + 6 * 2 + 20,
+      target_km: round1(reps * 0.4 + 4),
+      target_duration_min: Math.round(reps * 0.4 * iPace / 60) + reps * 2 + 20,
       pace_low_s_km: iPace,
       pace_high_s_km: iPace,
       hr_zone: "Z4",
       target_rpe: 8,
-      description: "6×400 m at I pace with walk-jog recovery. Beginner VO₂max introduction.",
+      description: `${reps}×400 m at I pace with walk-jog recovery. Beginner VO₂max introduction.`,
       rationale: "Short reps build speed tolerance while the generous recovery gives beginners room to keep good form.",
       warmup: "10 min easy jog",
-      main_set: `6×400 m at I pace (${fmtPace(iPace)} /km) with 400 m easy walk/jog recovery`,
+      main_set: `${reps}×400 m at I pace (${fmtPace(iPace)} /km) with 400 m easy walk/jog recovery`,
       cooldown: "5 min easy jog",
     };
   },

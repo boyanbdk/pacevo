@@ -10,7 +10,7 @@
 //   - No recipe exposes hardcoded "5x1000" as the only interval option
 //   - Easy/recovery sessions use hr zone Z1 or Z2
 //   - Hard sessions (tempo/interval) use hr zone Z4 or Z5
-//   - Cutback long run is shorter than the target km
+//   - Cutback long run stays easy at the assigned cutback distance
 //   - Stress score constraints are respected
 
 import { test, expect, describe } from "vitest";
@@ -177,10 +177,10 @@ describe("long run recipes", () => {
     expect(s.type).toBe("marathon_pace");
   });
 
-  test("cutback_long km is less than full targetKm", () => {
+  test("cutback_long uses the assigned cutback distance", () => {
     const r = getRecipeById("cutback_long")!;
     const s = r.build(makeCtx({ targetKm: 20 }));
-    expect(s.target_km!).toBeLessThan(20);
+    expect(s.target_km!).toBe(20);
     expect(s.target_rpe).toBeLessThanOrEqual(4);
   });
 
