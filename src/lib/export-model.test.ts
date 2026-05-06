@@ -71,6 +71,7 @@ const PLAN: TrainingPlan = {
       is_deload: false,
       total_km: 45,
       long_run_km: 14,
+      acwr: null,
       quality_count: 1,
       sessions: [
         session({ day_index: 1, date: "2026-05-04", type: "hills", pace_low_s_km: 237, description: "Hill repeats" }),
@@ -84,6 +85,7 @@ const PLAN: TrainingPlan = {
       is_deload: true,
       total_km: 38,
       long_run_km: 12,
+      acwr: 0.84,
       quality_count: 0,
       sessions: [
         session({ day_index: 1, date: "2026-05-11", type: "long", target_km: 12, pace_low_s_km: 330, description: "Cutback long run" }),

@@ -13,7 +13,7 @@ import { BRAND_EXPORT_LABEL, BRAND_NAME } from "@/lib/brand";
 import { formatShortPlanDate, formatWeekRange, formatWeekdayDate, parsePlanDate } from "@/lib/plan-dates";
 import type { AdaptationEvent, CompletedSession, PlanVersion, SavedPlan } from "@/lib/plan-storage";
 import { applyAdaptation, getPlan, getWorkoutPreferences, logSession, removeCompletedSession, updatePlanStatus } from "@/lib/plan-storage";
-import { exportPlanCsv, exportPlanDocx, exportPlanJson, exportPlanPdf, exportPlanWeekImage } from "@/lib/export";
+import { exportPlanCsv, exportPlanDocx, exportPlanJson, exportPlanPdf, exportPlanWeekCardImage, type PlanWeekImagePreset } from "@/lib/export";
 import { getSettings } from "@/lib/storage";
 import type { UserSettings } from "@/domain/workout-schema";
 
@@ -940,6 +940,7 @@ export default function PlanDetailPage() {
   const [weekIndex, setWeekIndex] = useState(0);
   const [tab, setTab] = useState<Tab>("plan");
   const [selectedEvent, setSelectedEvent] = useState<AdaptationEvent | null>(null);
+  const [pngPreset, setPngPreset] = useState<PlanWeekImagePreset>("landscape");
   const [loaded, setLoaded] = useState(false);
   const [settings, setSettings] = useState<UserSettings>(getSettings());
   const weekSectionRefs = useRef<Record<number, HTMLElement | null>>({});
@@ -1046,17 +1047,23 @@ export default function PlanDetailPage() {
           <button
             className="button ghost"
             title="Export week as PNG"
-            onClick={() => {
-              const isMobile = window.matchMedia("(max-width: 900px)").matches;
-              const node = isMobile
-                ? mobileWeekRefs.current[weekIndex] ?? weekSectionRefs.current[weekIndex]
-                : weekSectionRefs.current[weekIndex] ?? mobileWeekRefs.current[weekIndex];
-              if (node) exportPlanWeekImage(node, plan.plan.meta.goal_race, weekIndex);
-            }}
+            onClick={() => exportPlanWeekCardImage(plan.plan, weekIndex, settings, pngPreset)}
           >
             <FileImage size={16} />
             PNG
           </button>
+          <select
+            className="select"
+            aria-label="PNG export size"
+            value={pngPreset}
+            onChange={(event) => setPngPreset(event.target.value as PlanWeekImagePreset)}
+            style={{ width: 134, minHeight: 42 }}
+          >
+            <option value="landscape">Landscape</option>
+            <option value="square">Square</option>
+            <option value="story">Story</option>
+            <option value="print">Print</option>
+          </select>
           <button className="button ghost" title="Export full plan as PDF" onClick={() => exportPlanPdf(plan.plan, settings)}>
             <FileText size={16} />
             PDF
