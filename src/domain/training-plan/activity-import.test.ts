@@ -138,6 +138,31 @@ test("same-date close matches are automatic but date mismatches are suggestions"
   expect(matches[1].reason).toMatch(/review/i);
 });
 
+test("matching returns zero-based storage week index even when plan weeks are one-based", () => {
+  const plan: TrainingPlan = {
+    ...makePlan(),
+    weeks: [
+      { ...makePlan().weeks[0], week_index: 1, sessions: [] },
+      {
+        ...makePlan().weeks[0],
+        week_index: 2,
+        sessions: makePlan().weeks[0].sessions.map((session) => ({
+          ...session,
+          date: session.day_index === 1 ? "2026-05-05" : "2026-05-07",
+        })),
+      },
+    ],
+  };
+  const activity = parseActivityFile("same-date.gpx", GPX)[0];
+
+  const [match] = matchImportedActivities(plan, [activity], []);
+
+  expect(match.status).toBe("auto");
+  expect(match.weekIndex).toBe(1);
+  expect(match.dayIndex).toBe(1);
+  expect(plan.weeks[match.weekIndex!].sessions.some((session) => session.date === activity.date)).toBe(true);
+});
+
 test("already logged same-date sessions are marked as duplicates", () => {
   const activity = parseActivityFile("run.gpx", GPX)[0];
   const completed: CompletedSession[] = [{
@@ -159,6 +184,31 @@ test("already logged same-date sessions are marked as duplicates", () => {
   const [match] = matchImportedActivities(makePlan(), [activity], completed);
 
   expect(match.status).toBe("duplicate");
+});
+
+test("already imported file activities use generic duplicate copy", () => {
+  const activity = parseActivityFile("run.gpx", GPX)[0];
+  const completed: CompletedSession[] = [{
+    id: "existing",
+    planId: "plan",
+    weekIndex: 0,
+    dayIndex: 1,
+    date: "2026-05-05",
+    actualKm: 2,
+    actualDurationMin: 10,
+    avgHR: null,
+    maxHR: null,
+    rpe: null,
+    note: "",
+    source: "file_import",
+    activityId: activity.id,
+    createdAt: "2026-05-05T07:00:00Z",
+  }];
+
+  const [match] = matchImportedActivities(makePlan(), [activity], completed);
+
+  expect(match.status).toBe("duplicate");
+  expect(match.reason).toBe("That activity is already imported.");
 });
 
 test("already imported Strava provider activities are exact duplicates", () => {

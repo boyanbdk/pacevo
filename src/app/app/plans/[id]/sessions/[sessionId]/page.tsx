@@ -151,6 +151,29 @@ function LogSessionForm({
   const [saving, setSaving] = useState(false);
   const [adaptationMessage, setAdaptationMessage] = useState<string | null>(null);
 
+  useEffect(() => {
+    setForm(
+      existing
+        ? {
+            actualKm: existing.actualKm?.toString() ?? "",
+            actualDurationMin: existing.actualDurationMin?.toString() ?? "",
+            avgHR: existing.avgHR?.toString() ?? "",
+            maxHR: existing.maxHR?.toString() ?? "",
+            rpe: existing.rpe?.toString() ?? "",
+            note: existing.note ?? "",
+          }
+        : EMPTY_LOG,
+    );
+  }, [
+    existing?.id,
+    existing?.actualKm,
+    existing?.actualDurationMin,
+    existing?.avgHR,
+    existing?.maxHR,
+    existing?.rpe,
+    existing?.note,
+  ]);
+
   function patch(partial: Partial<LogForm>) {
     setForm((prev) => ({ ...prev, ...partial }));
   }

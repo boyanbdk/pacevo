@@ -186,10 +186,10 @@ export function parseActivityFile(fileName: string, contents: string): ImportedA
 }
 
 function plannedSessions(plan: TrainingPlan): Array<{ weekIndex: number; session: PlannedSession }> {
-  return plan.weeks.flatMap((week) =>
+  return plan.weeks.flatMap((week, weekIndex) =>
     week.sessions
       .filter((session) => session.type !== "rest")
-      .map((session) => ({ weekIndex: week.week_index, session })),
+      .map((session) => ({ weekIndex, session })),
   );
 }
 
@@ -228,7 +228,9 @@ export function matchImportedActivities(
       return {
         activity,
         status: "duplicate",
-        reason: "That Strava activity is already imported.",
+        reason: activity.source === "strava"
+          ? "That Strava activity is already imported."
+          : "That activity is already imported.",
         weekIndex: imported.weekIndex,
         dayIndex: imported.dayIndex,
         dateDeltaDays: 0,
