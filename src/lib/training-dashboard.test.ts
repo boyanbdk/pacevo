@@ -117,6 +117,7 @@ function plan(overrides: Partial<SavedPlan> = {}): SavedPlan {
       createdAt: "2026-05-01T00:00:00.000Z",
     }],
     completedSessions: [],
+    importedActivities: [],
     adaptationEvents: [],
     workoutFeedback: [],
     createdAt: "2026-05-01T00:00:00.000Z",

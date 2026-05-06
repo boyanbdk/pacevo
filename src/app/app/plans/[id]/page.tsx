@@ -11,7 +11,7 @@ import { planSettingsSummary } from "@/lib/plan-display";
 import { BRAND_EXPORT_LABEL, BRAND_NAME } from "@/lib/brand";
 import { formatShortPlanDate, formatWeekRange, formatWeekdayDate } from "@/lib/plan-dates";
 import type { AdaptationEvent, CompletedSession, PlanSessionSlot, PlanVersion, SavedPlan } from "@/lib/plan-storage";
-import { getPlan, movePlannedSessionDate, removeCompletedSession, updatePlanStatus } from "@/lib/plan-storage";
+import { detachImportedActivityFromSession, getPlan, movePlannedSessionDate, updatePlanStatus } from "@/lib/plan-storage";
 import { currentWeekIndexForPlan, importActivityIntoPlan, markStravaActivityImported } from "@/lib/activity-plan-import";
 import { exportPlanCsv, exportPlanDocx, exportPlanIcs, exportPlanJson, exportPlanPdf, exportPlanWeekCardImage, type PlanWeekImagePreset } from "@/lib/export";
 import type { PlanExportOptions } from "@/lib/export-model";
@@ -135,12 +135,27 @@ function matchStatusClass(status: ActivityMatch["status"]): string {
   return "";
 }
 
-// Build a flat list of all non-rest sessions across a plan for the change picker.
-function allPlanSessions(plan: SavedPlan): { weekIndex: number; dayIndex: number; label: string }[] {
+function daysBetweenPlanDates(a: string, b: string): number {
+  const first = new Date(`${a}T12:00:00`);
+  const second = new Date(`${b}T12:00:00`);
+  return Math.round((first.getTime() - second.getTime()) / 86400000);
+}
+
+// Build the bounded list of unlogged sessions for the change picker.
+function candidatePlanSessions(
+  plan: SavedPlan,
+  activity: ImportedActivity,
+  currentTarget: { weekIndex: number; dayIndex: number } | null,
+): { weekIndex: number; dayIndex: number; label: string }[] {
+  const logged = new Set(plan.completedSessions.map((session) => `${session.weekIndex}-${session.dayIndex}`));
   const out: { weekIndex: number; dayIndex: number; label: string }[] = [];
   for (let wi = 0; wi < plan.plan.weeks.length; wi++) {
     for (const s of plan.plan.weeks[wi].sessions) {
       if (s.type === "rest") continue;
+      const slotKey = `${wi}-${s.day_index}`;
+      const isCurrentTarget = currentTarget?.weekIndex === wi && currentTarget.dayIndex === s.day_index;
+      if (logged.has(slotKey) && !isCurrentTarget) continue;
+      if (!isCurrentTarget && Math.abs(daysBetweenPlanDates(activity.date, s.date)) > 10) continue;
       out.push({
         weekIndex: wi,
         dayIndex: s.day_index,
@@ -155,6 +170,14 @@ function stravaActivityDetailHref(activity: ImportedActivity): string | null {
   if (activity.source !== "strava") return null;
   const routeId = activity.providerActivityId ?? activity.id.replace(/^strava:/, "");
   return routeId ? `/app/activities/strava/${encodeURIComponent(routeId)}` : null;
+}
+
+function importedActivityLinkedToPlan(plan: SavedPlan, activity: ImportedActivity): boolean {
+  const providerActivityId = activity.providerActivityId ?? (activity.source === "strava" ? activity.id.replace(/^strava:/, "") : null);
+  return plan.completedSessions.some((session) =>
+    session.activityId === activity.id
+      || Boolean(providerActivityId && session.providerActivityId === providerActivityId),
+  );
 }
 
 function ImportedActivityPanel({
@@ -262,15 +285,17 @@ function ImportedActivityPanel({
   async function importMatch(match: ActivityMatch) {
     setImporting(true);
     setMessage(null);
+    let updated: SavedPlan | null = null;
     try {
-      const updated = applySingleImport(match);
+      updated = applySingleImport(match);
       if (updated) {
-        await markStravaActivityImported(match.activity, true);
         onPlanChanged(updated);
         refreshMatches(updated);
+        await markStravaActivityImported(match.activity, true);
         setMessage("Activity imported.");
       }
     } catch (err) {
+      if (updated) onPlanChanged(updated);
       setError(err instanceof Error ? err.message : "Activity imported locally, but Strava status could not be updated.");
     } finally {
       setImporting(false);
@@ -291,14 +316,21 @@ function ImportedActivityPanel({
       let updated: SavedPlan | null = null;
       for (const match of ready) {
         updated = applySingleImport(match) ?? updated;
+        if (updated) {
+          onPlanChanged(updated);
+          refreshMatches(updated);
+        }
         await markStravaActivityImported(match.activity, true);
       }
       if (updated) {
-        onPlanChanged(updated);
-        refreshMatches(updated);
         setMessage(`${ready.length} activit${ready.length === 1 ? "y" : "ies"} imported.`);
       }
     } catch (err) {
+      const refreshed = getPlan(plan.id);
+      if (refreshed) {
+        onPlanChanged(refreshed);
+        refreshMatches(refreshed);
+      }
       setError(err instanceof Error ? err.message : "Activities imported locally, but Strava status could not be updated.");
     } finally {
       setImporting(false);
@@ -306,9 +338,8 @@ function ImportedActivityPanel({
   }
 
   async function handleUnlink(match: ActivityMatch) {
-    if (match.weekIndex === null || match.dayIndex === null) return;
-    removeCompletedSession(plan.id, match.weekIndex, match.dayIndex);
     try {
+      detachImportedActivityFromSession(plan.id, match.activity.id);
       await markStravaActivityImported(match.activity, false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Activity unlinked locally, but Strava status could not be updated.");
@@ -316,7 +347,7 @@ function ImportedActivityPanel({
       const refreshed = getPlan(plan.id)!;
       onPlanChanged(refreshed);
       refreshMatches(refreshed);
-      setMessage("Activity unlinked.");
+      setMessage("Activity detached.");
     }
   }
 
@@ -329,8 +360,11 @@ function ImportedActivityPanel({
     setOverrides((prev) => ({ ...prev, [match.activity.id]: { weekIndex: wi, dayIndex: di } }));
   }
 
-  const allSessions = allPlanSessions(plan);
-  const autoCount = matches.filter((m) => m.status === "auto").length;
+  const readyCount = matches.filter((m) => {
+    if (overrides[m.activity.id] !== undefined) return overrides[m.activity.id] !== null;
+    if (m.status === "duplicate") return false;
+    return m.status === "auto" || m.status === "suggestion";
+  }).length;
 
   return (
     <div className="import-panel">
@@ -368,7 +402,7 @@ function ImportedActivityPanel({
             <span className="muted">{matches.length} activit{matches.length === 1 ? "y" : "ies"} parsed</span>
             <button
               className="button primary"
-              disabled={autoCount === 0 || importing}
+              disabled={readyCount === 0 || importing}
               type="button"
               onClick={importAllReady}
             >
@@ -383,7 +417,10 @@ function ImportedActivityPanel({
                 ? plan.plan.weeks[target.weekIndex]?.sessions.find((s) => s.day_index === target.dayIndex)
                 : null;
               const override = overrides[match.activity.id];
-              const canImport = (match.status === "auto" || match.status === "suggestion" || override != null) && match.status !== "duplicate";
+              const hasOverride = override !== undefined && override !== null;
+              const linkedDuplicate = match.status === "duplicate" && importedActivityLinkedToPlan(plan, match.activity);
+              const canImport = hasOverride || match.status === "auto" || match.status === "suggestion";
+              const sessionOptions = candidatePlanSessions(plan, match.activity, target);
               const detailHref = stravaActivityDetailHref(match.activity);
               return (
                 <div key={match.activity.id} className="import-match-row">
@@ -413,7 +450,7 @@ function ImportedActivityPanel({
                       onChange={(e) => handleOverrideChange(match, e.target.value)}
                     >
                       {!target && <option value="">— choose session —</option>}
-                      {allSessions.map((s) => (
+                      {sessionOptions.map((s) => (
                         <option key={`${s.weekIndex}:${s.dayIndex}`} value={`${s.weekIndex}:${s.dayIndex}`}>
                           {s.label}
                         </option>
@@ -426,14 +463,18 @@ function ImportedActivityPanel({
                         Details
                       </Link>
                     )}
-                    {match.status === "duplicate" ? (
+                    {match.status === "duplicate" && !hasOverride && linkedDuplicate ? (
                       <button
                         className="button ghost"
                         disabled={importing}
                         type="button"
                         onClick={() => handleUnlink(match)}
                       >
-                        Unlink
+                        Detach
+                      </button>
+                    ) : match.status === "duplicate" && !hasOverride ? (
+                      <button className="button ghost" type="button" disabled>
+                        Logged
                       </button>
                     ) : (
                       <button
@@ -442,7 +483,7 @@ function ImportedActivityPanel({
                         type="button"
                         onClick={() => importMatch(match)}
                       >
-                        Import
+                        {match.status === "duplicate" ? "Re-link" : "Import"}
                       </button>
                     )}
                   </div>

@@ -3,9 +3,10 @@ import type { ActivityMatch, ImportedActivity } from "../domain/training-plan/ac
 import { parsePlanDate } from "./plan-dates";
 import {
   applyAdaptation,
+  attachExistingImportedActivityToSession,
   getPlan,
   getWorkoutPreferences,
-  logSession,
+  linkImportedActivityToSession,
   type SavedPlan,
 } from "./plan-storage";
 
@@ -52,28 +53,47 @@ export function importActivityIntoPlan(
   activity: ImportedActivity,
   target: ActivityImportTarget,
 ): SavedPlan {
-  const session = plan.plan.weeks[target.weekIndex]?.sessions.find((candidate) => candidate.day_index === target.dayIndex);
-  if (!session) {
-    throw new Error("Could not find the selected planned session.");
-  }
-
-  logSession(plan.id, {
-    weekIndex: target.weekIndex,
-    dayIndex: target.dayIndex,
-    date: session.date,
-    actualKm: activity.distanceKm,
-    actualDurationMin: activity.durationMin,
-    avgHR: activity.avgHR,
-    maxHR: activity.maxHR,
-    rpe: null,
-    note: `Imported from ${activity.fileName}`,
-    source: activity.source === "strava" ? "strava" : "file_import",
-    providerActivityId: providerActivityIdForImport(activity) ?? undefined,
-  });
+  linkImportedActivityToSession(plan.id, {
+    ...activity,
+    providerActivityId: providerActivityIdForImport(activity) ?? activity.providerActivityId,
+  }, target);
 
   let refreshed = getPlan(plan.id);
   if (!refreshed) {
     throw new Error(`Plan ${plan.id} not found after importing activity.`);
+  }
+
+  const result = runAdaptations(
+    refreshed.plan,
+    refreshed.completedSessions,
+    refreshed.inputs,
+    currentWeekIndexForPlan(refreshed),
+    getWorkoutPreferences(refreshed.id),
+    refreshed.inputs.days_per_week,
+  );
+
+  if (result) {
+    refreshed = applyAdaptation(plan.id, result.newPlan, {
+      rule: result.rule,
+      explanation: result.explanation,
+      triggeredBySessionIds: result.triggeredBySessionIds,
+      firedAt: new Date().toISOString(),
+    }).plan;
+  }
+
+  return refreshed;
+}
+
+export function attachImportedActivityToPlanSession(
+  plan: SavedPlan,
+  activityId: string,
+  target: ActivityImportTarget,
+): SavedPlan {
+  attachExistingImportedActivityToSession(plan.id, activityId, target);
+
+  let refreshed = getPlan(plan.id);
+  if (!refreshed) {
+    throw new Error(`Plan ${plan.id} not found after attaching activity.`);
   }
 
   const result = runAdaptations(

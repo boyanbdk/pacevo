@@ -2,13 +2,16 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { buildPlan } from "../domain/training-plan/build-plan";
 import type { PlanInputs } from "../domain/training-plan/types";
 import {
+  attachExistingImportedActivityToSession,
   createPlan,
+  detachImportedActivityFromSession,
   getCompletedSession,
   getPlan,
   getPlans,
   getWorkoutFeedbackForSession,
   getWorkoutPreferences,
   applyWorkoutSwap,
+  linkImportedActivityToSession,
   logSession,
   movePlannedSessionDate,
   recordWorkoutFeedback,
@@ -92,6 +95,54 @@ test("logSession replaces the existing log for the same planned session", () => 
   expect(saved?.note).toBe("updated");
   expect(localStorage.getItem("pacevo:plans")).not.toBeNull();
   expect(localStorage.getItem("run-tailor:plans")).toBeNull();
+});
+
+test("imported activity can detach and reattach to another planned session", () => {
+  const plan = createPlan(INPUTS, buildPlan(INPUTS));
+  savePlan(plan);
+  const slots = plan.plan.weeks.flatMap((week, weekIndex) =>
+    week.sessions
+      .filter((session) => session.type !== "rest")
+      .map((session) => ({ weekIndex, dayIndex: session.day_index })),
+  );
+  const source = slots[0];
+  const target = slots[1];
+  const activity = {
+    id: "gpx:morning-run",
+    source: "gpx" as const,
+    fileName: "morning-run.gpx",
+    name: "Morning run",
+    startedAt: `${plan.plan.weeks[source.weekIndex].sessions.find((s) => s.day_index === source.dayIndex)!.date}T07:00:00.000Z`,
+    date: plan.plan.weeks[source.weekIndex].sessions.find((s) => s.day_index === source.dayIndex)!.date,
+    distanceKm: 7.2,
+    durationMin: 41,
+    avgHR: 144,
+    maxHR: 166,
+  };
+
+  const linked = linkImportedActivityToSession(plan.id, activity, source);
+
+  expect(linked.importedActivities).toHaveLength(1);
+  expect(linked.importedActivities[0].linkedSessionRef).toEqual(source);
+  expect(getCompletedSession(plan.id, source.weekIndex, source.dayIndex)).toMatchObject({
+    activityId: activity.id,
+    actualKm: 7.2,
+    source: "file_import",
+  });
+
+  const detached = detachImportedActivityFromSession(plan.id, activity.id);
+
+  expect(detached.importedActivities[0].linkedSessionRef).toBeNull();
+  expect(getCompletedSession(plan.id, source.weekIndex, source.dayIndex)).toBeUndefined();
+
+  const reattached = attachExistingImportedActivityToSession(plan.id, activity.id, target);
+
+  expect(reattached.importedActivities[0].linkedSessionRef).toEqual(target);
+  expect(getCompletedSession(plan.id, source.weekIndex, source.dayIndex)).toBeUndefined();
+  expect(getCompletedSession(plan.id, target.weekIndex, target.dayIndex)).toMatchObject({
+    activityId: activity.id,
+    actualDurationMin: 41,
+  });
 });
 
 test("legacy plans load and next save writes the pacevo plans key", () => {

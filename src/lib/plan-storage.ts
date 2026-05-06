@@ -25,9 +25,35 @@ export type CompletedSession = {
   rpe: number | null;
   note: string;
   source: "manual" | "file_import" | "strava";
+  activityId?: string;
   providerActivityId?: string;
   createdAt: string;
 };
+
+export type PlanSessionSlot = {
+  weekIndex: number;
+  dayIndex: number;
+};
+
+export type PlanImportedActivity = {
+  id: string;
+  providerActivityId?: string;
+  source: "gpx" | "tcx" | "strava";
+  fileName: string;
+  name: string;
+  startedAt: string;
+  date: string;
+  distanceKm: number;
+  durationMin: number;
+  movingTimeMin?: number | null;
+  elapsedTimeMin?: number | null;
+  avgHR: number | null;
+  maxHR: number | null;
+  linkedSessionRef: PlanSessionSlot | null;
+  importedAt: string;
+};
+
+export type ImportedActivityInput = Omit<PlanImportedActivity, "linkedSessionRef" | "importedAt">;
 
 export type AdaptationRule =
   | "ACWR_CAP"
@@ -66,15 +92,11 @@ export type SavedPlan = {
   status: "draft" | "active" | "completed" | "archived";
   versions: PlanVersion[];
   completedSessions: CompletedSession[];
+  importedActivities: PlanImportedActivity[];
   adaptationEvents: AdaptationEvent[];
   workoutFeedback: WorkoutFeedback[];
   createdAt: string;
   updatedAt: string;
-};
-
-export type PlanSessionSlot = {
-  weekIndex: number;
-  dayIndex: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -87,6 +109,9 @@ const legacyPlansKey = "run-tailor:plans";
 function normalizePlan(plan: SavedPlan): SavedPlan {
   return {
     ...plan,
+    completedSessions: plan.completedSessions ?? [],
+    importedActivities: plan.importedActivities ?? [],
+    adaptationEvents: plan.adaptationEvents ?? [],
     workoutFeedback: plan.workoutFeedback ?? [],
   };
 }
@@ -154,6 +179,7 @@ export function createPlan(inputs: PlanInputs, plan: TrainingPlan): SavedPlan {
     status: "active",
     versions: [initialVersion],
     completedSessions: [],
+    importedActivities: [],
     adaptationEvents: [],
     workoutFeedback: [],
     createdAt: now,
@@ -209,6 +235,188 @@ export function removeCompletedSession(planId: string, weekIndex: number, dayInd
     ),
     updatedAt: new Date().toISOString(),
   });
+}
+
+function sameSlot(a: PlanSessionSlot, b: PlanSessionSlot): boolean {
+  return a.weekIndex === b.weekIndex && a.dayIndex === b.dayIndex;
+}
+
+function providerIdFromActivityId(activityId: string): string {
+  return activityId.replace(/^strava:/, "");
+}
+
+function activityMatches(
+  activity: Pick<PlanImportedActivity, "id" | "providerActivityId">,
+  activityId: string,
+  providerActivityId?: string,
+): boolean {
+  return activity.id === activityId
+    || Boolean(activity.providerActivityId && providerActivityId && activity.providerActivityId === providerActivityId)
+    || Boolean(activity.providerActivityId && activity.providerActivityId === providerIdFromActivityId(activityId));
+}
+
+function completedMatchesActivity(
+  session: CompletedSession,
+  activityId: string,
+  providerActivityId?: string,
+): boolean {
+  return session.activityId === activityId
+    || Boolean(session.providerActivityId && providerActivityId && session.providerActivityId === providerActivityId)
+    || Boolean(session.providerActivityId && session.providerActivityId === providerIdFromActivityId(activityId));
+}
+
+function findImportedActivity(
+  plan: SavedPlan,
+  activityId: string,
+  providerActivityId?: string,
+): PlanImportedActivity | undefined {
+  return plan.importedActivities.find((activity) => activityMatches(activity, activityId, providerActivityId));
+}
+
+function upsertImportedActivity(
+  activities: PlanImportedActivity[],
+  next: PlanImportedActivity,
+): PlanImportedActivity[] {
+  const existingIndex = activities.findIndex((activity) => activityMatches(activity, next.id, next.providerActivityId));
+  if (existingIndex === -1) return [...activities, next];
+  return activities.toSpliced(existingIndex, 1, next);
+}
+
+function completedSessionFromActivity(
+  planId: string,
+  activity: ImportedActivityInput,
+  activityId: string,
+  target: PlanSessionSlot,
+  session: PlannedSession,
+  existing?: CompletedSession,
+): CompletedSession {
+  return {
+    id: existing?.id ?? crypto.randomUUID(),
+    planId,
+    weekIndex: target.weekIndex,
+    dayIndex: target.dayIndex,
+    date: session.date,
+    actualKm: activity.distanceKm,
+    actualDurationMin: activity.durationMin,
+    avgHR: activity.avgHR,
+    maxHR: activity.maxHR,
+    rpe: existing?.rpe ?? null,
+    note: existing?.note || `Imported from ${activity.fileName}`,
+    source: activity.source === "strava" ? "strava" : "file_import",
+    activityId,
+    providerActivityId: activity.providerActivityId,
+    createdAt: existing?.createdAt ?? new Date().toISOString(),
+  };
+}
+
+export function linkImportedActivityToSession(
+  planId: string,
+  activity: ImportedActivityInput,
+  target: PlanSessionSlot,
+): SavedPlan {
+  const plan = getPlan(planId);
+  if (!plan) throw new Error(`Plan ${planId} not found`);
+
+  const plannedSession = plan.plan.weeks[target.weekIndex]?.sessions.find((candidate) => candidate.day_index === target.dayIndex);
+  if (!plannedSession) throw new Error("Could not find the selected planned session.");
+  if (plannedSession.type === "rest") throw new Error("Choose a planned run, not a rest day.");
+
+  const existingActivity = findImportedActivity(plan, activity.id, activity.providerActivityId);
+  const activityId = existingActivity?.id ?? activity.id;
+  const existingCompleted = plan.completedSessions.find((session) =>
+    completedMatchesActivity(session, activityId, activity.providerActivityId),
+  );
+  const targetCompleted = plan.completedSessions.find((session) => sameSlot(session, target));
+  if (targetCompleted && targetCompleted.id !== existingCompleted?.id) {
+    throw new Error("That planned session is already logged. Detach or remove its log before linking another activity.");
+  }
+
+  const now = new Date().toISOString();
+  const nextActivity: PlanImportedActivity = {
+    ...activity,
+    id: activityId,
+    providerActivityId: activity.providerActivityId ?? existingActivity?.providerActivityId,
+    linkedSessionRef: target,
+    importedAt: existingActivity?.importedAt ?? now,
+  };
+  const completed = completedSessionFromActivity(planId, activity, activityId, target, plannedSession, existingCompleted);
+
+  const updated: SavedPlan = {
+    ...plan,
+    importedActivities: upsertImportedActivity(plan.importedActivities, nextActivity),
+    completedSessions: [
+      ...plan.completedSessions.filter((session) =>
+        !completedMatchesActivity(session, activityId, activity.providerActivityId) && !sameSlot(session, target),
+      ),
+      completed,
+    ],
+    updatedAt: now,
+  };
+
+  savePlan(updated);
+  return updated;
+}
+
+export function attachExistingImportedActivityToSession(
+  planId: string,
+  activityId: string,
+  target: PlanSessionSlot,
+): SavedPlan {
+  const plan = getPlan(planId);
+  if (!plan) throw new Error(`Plan ${planId} not found`);
+  const activity = findImportedActivity(plan, activityId);
+  if (!activity) throw new Error("Imported activity not found.");
+  return linkImportedActivityToSession(planId, {
+    id: activity.id,
+    providerActivityId: activity.providerActivityId,
+    source: activity.source,
+    fileName: activity.fileName,
+    name: activity.name,
+    startedAt: activity.startedAt,
+    date: activity.date,
+    distanceKm: activity.distanceKm,
+    durationMin: activity.durationMin,
+    movingTimeMin: activity.movingTimeMin,
+    elapsedTimeMin: activity.elapsedTimeMin,
+    avgHR: activity.avgHR,
+    maxHR: activity.maxHR,
+  }, target);
+}
+
+export function detachImportedActivityFromSession(planId: string, activityId: string): SavedPlan {
+  const plan = getPlan(planId);
+  if (!plan) throw new Error(`Plan ${planId} not found`);
+
+  const activity = findImportedActivity(plan, activityId);
+  const resolvedActivityId = activity?.id ?? activityId;
+  const providerActivityId = activity?.providerActivityId ?? providerIdFromActivityId(activityId);
+  const now = new Date().toISOString();
+
+  const updated: SavedPlan = {
+    ...plan,
+    importedActivities: plan.importedActivities.map((candidate) =>
+      activityMatches(candidate, resolvedActivityId, providerActivityId)
+        ? { ...candidate, linkedSessionRef: null }
+        : candidate,
+    ),
+    completedSessions: plan.completedSessions.filter((session) =>
+      !completedMatchesActivity(session, resolvedActivityId, providerActivityId),
+    ),
+    updatedAt: now,
+  };
+
+  savePlan(updated);
+  return updated;
+}
+
+export function getImportedActivityForSession(
+  plan: SavedPlan,
+  weekIndex: number,
+  dayIndex: number,
+): PlanImportedActivity | undefined {
+  return plan.importedActivities.find((activity) =>
+    activity.linkedSessionRef?.weekIndex === weekIndex && activity.linkedSessionRef.dayIndex === dayIndex,
+  );
 }
 
 // ---------------------------------------------------------------------------

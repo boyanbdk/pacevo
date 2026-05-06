@@ -60,9 +60,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
             <span>{BRAND_NAME}</span>
           </Link>
-          <Link className="button ghost" href="/app/new" aria-label="New workout">
-            <Activity size={18} />
-          </Link>
+          <div className="mobile-topbar-actions">
+            <Link className="button ghost" href="/app/new" aria-label="New workout">
+              <Activity size={18} />
+            </Link>
+            <Link className="button ghost" href="/app/settings" aria-label="Settings">
+              <Settings size={18} />
+            </Link>
+          </div>
         </div>
         <main className="main">{children}</main>
       </div>

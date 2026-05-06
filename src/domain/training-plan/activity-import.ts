@@ -213,12 +213,17 @@ export function matchImportedActivities(
       .filter((session) => session.source === "strava" && session.providerActivityId)
       .map((session) => [session.providerActivityId!, session]),
   );
+  const completedByActivityId = new Map(
+    completed
+      .filter((session) => session.activityId)
+      .map((session) => [session.activityId!, session]),
+  );
   const sessions = plannedSessions(plan);
 
   return activities.map((activity) => {
     const imported = activity.providerActivityId
       ? completedByProviderActivityId.get(activity.providerActivityId)
-      : null;
+      : completedByActivityId.get(activity.id);
     if (imported) {
       return {
         activity,

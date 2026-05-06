@@ -23,13 +23,16 @@ import type { IntensityMode, PlannedSession, TrainingWeek } from "@/domain/train
 import type { WorkoutFeedbackReason, WorkoutFeedbackType } from "@/domain/training-plan/workout-preferences";
 import { sessionPaceReferenceItems } from "@/lib/plan-display";
 import { BRAND_NAME } from "@/lib/brand";
+import { attachImportedActivityToPlanSession, markStravaActivityImported } from "@/lib/activity-plan-import";
 import { formatFullPlanDate, parsePlanDate } from "@/lib/plan-dates";
 import type { CompletedSession, SavedPlan } from "@/lib/plan-storage";
 import type { UserSettings } from "@/domain/workout-schema";
 import {
   applyAdaptation,
   applyWorkoutSwap,
+  detachImportedActivityFromSession,
   getCompletedSession,
+  getImportedActivityForSession,
   getPlan,
   getWorkoutFeedbackForSession,
   getWorkoutPreferences,
@@ -165,7 +168,9 @@ function LogSessionForm({
         maxHR: form.maxHR ? Number(form.maxHR) : null,
         rpe: form.rpe ? Number(form.rpe) : null,
         note: form.note,
-        source: "manual",
+        source: existing?.source ?? "manual",
+        activityId: existing?.activityId,
+        providerActivityId: existing?.providerActivityId,
       });
 
       const refreshed = getPlan(plan.id)!;
@@ -293,6 +298,115 @@ function LogSessionForm({
           {saving ? "Saving…" : existing ? "Update log" : "Save log"}
         </button>
       </div>
+    </div>
+  );
+}
+
+function ActivityLinkControls({
+  plan,
+  weekIndex,
+  dayIndex,
+  existing,
+  onSaved,
+}: {
+  plan: SavedPlan;
+  weekIndex: number;
+  dayIndex: number;
+  existing: CompletedSession | undefined;
+  onSaved: (updated: SavedPlan) => void;
+}) {
+  const [selectedActivityId, setSelectedActivityId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const linkedActivity = getImportedActivityForSession(plan, weekIndex, dayIndex)
+    ?? (existing?.activityId
+      ? plan.importedActivities.find((activity) => activity.id === existing.activityId)
+      : undefined);
+  const attachableActivities = plan.importedActivities
+    .filter((activity) => activity.linkedSessionRef === null)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const selected = selectedActivityId || attachableActivities[0]?.id || "";
+  const canAttach = !existing && attachableActivities.length > 0;
+
+  async function handleDetach() {
+    if (!linkedActivity) return;
+    setBusy(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const updated = detachImportedActivityFromSession(plan.id, linkedActivity.id);
+      onSaved(updated);
+      await markStravaActivityImported(linkedActivity, false);
+      setMessage("Activity detached from this planned session.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not detach activity.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleAttach() {
+    if (!selected) return;
+    setBusy(true);
+    setMessage(null);
+    setError(null);
+    let updated: SavedPlan | null = null;
+    try {
+      updated = attachImportedActivityToPlanSession(plan, selected, { weekIndex, dayIndex });
+      onSaved(updated);
+      const activity = updated.importedActivities.find((candidate) => candidate.id === selected);
+      if (activity) {
+        await markStravaActivityImported(activity, true);
+      }
+      setSelectedActivityId("");
+      setMessage("Activity attached to this planned session.");
+    } catch (err) {
+      if (updated) onSaved(updated);
+      setError(err instanceof Error ? err.message : "Activity attached locally, but Strava status could not be updated.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!linkedActivity && !canAttach && !message && !error) return null;
+
+  return (
+    <div className="panel" style={{ marginBottom: 18 }}>
+      <h3 style={{ margin: "0 0 12px" }}>Activity link</h3>
+      {linkedActivity ? (
+        <div className="import-match-target" style={{ marginBottom: 12 }}>
+          <strong>Linked to:</strong>{" "}
+          {linkedActivity.name}, {linkedActivity.date} · {linkedActivity.distanceKm.toFixed(2)} km · {linkedActivity.durationMin.toFixed(0)} min
+        </div>
+      ) : canAttach ? (
+        <div className="button-row" style={{ alignItems: "center" }}>
+          <select
+            className="select"
+            value={selected}
+            onChange={(event) => setSelectedActivityId(event.target.value)}
+            disabled={busy}
+            style={{ minWidth: 280 }}
+          >
+            {attachableActivities.map((activity) => (
+              <option key={activity.id} value={activity.id}>
+                {activity.date} · {activity.name} · {activity.distanceKm.toFixed(2)} km
+              </option>
+            ))}
+          </select>
+          <button className="button primary" type="button" disabled={busy || !selected} onClick={handleAttach}>
+            Attach activity
+          </button>
+        </div>
+      ) : null}
+
+      {linkedActivity && (
+        <button className="button ghost" type="button" disabled={busy} onClick={handleDetach}>
+          Detach
+        </button>
+      )}
+      {message && <p className="muted" style={{ margin: "10px 0 0" }}>{message}</p>}
+      {error && <div className="plan-warn" style={{ marginTop: 10 }}>{error}</div>}
     </div>
   );
 }
@@ -692,6 +806,14 @@ export default function SessionDetailPage() {
           {existing.note && <p className="muted" style={{ margin: "10px 0 0" }}>{existing.note}</p>}
         </div>
       )}
+
+      <ActivityLinkControls
+        plan={plan}
+        weekIndex={weekIndex}
+        dayIndex={dayIndex}
+        existing={existing}
+        onSaved={setPlan}
+      />
 
       <FeedbackControls
         planId={id}
