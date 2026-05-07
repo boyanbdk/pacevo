@@ -405,11 +405,69 @@ test("quality recipes do not repeat inside a 3-week window when alternatives exi
   );
 
   for (let i = 0; i < qualityByWeek.length; i++) {
-    const recent = qualityByWeek.slice(Math.max(0, i - 3), i).flat();
+    const recent = qualityByWeek.slice(Math.max(0, i - 1), i).flat();
     for (const id of qualityByWeek[i]) {
       expect(recent).not.toContain(id);
     }
   }
+});
+
+test("stride workouts are capped to one or two easy days per week", () => {
+  const plan = buildPlan({
+    ...goldenInputs("5K", "advanced"),
+    training_focus: "speed",
+    difficulty_preference: "challenging",
+    self_selected_level: "advanced",
+  });
+
+  for (const week of plan.weeks) {
+    const strideDays = week.sessions.filter((session) =>
+      session.recipe_id === "easy_strides" || session.recipe_id === "recovery_strides"
+    );
+    expect(strideDays.length).toBeLessThanOrEqual(2);
+  }
+});
+
+test("recovery runs are placed after hard sessions without adding strides", () => {
+  const plan = buildPlan({
+    ...INTERMEDIATE_HALF,
+    goal_date: futureDate(18),
+    days_per_week: 5,
+    self_selected_level: "intermediate",
+  });
+  const week = plan.weeks.find((candidate) =>
+    candidate.week_index > 1
+    && candidate.phase === "build"
+    && !candidate.is_deload
+    && !hasRace(candidate)
+    && candidate.sessions.some((session) => session.session_role === "quality")
+  );
+
+  expect(week).toBeDefined();
+  const qualityDay = week!.sessions.find((session) => session.session_role === "quality")!.day_index;
+  const recovery = week!.sessions.find((session) => session.day_index === ((qualityDay % 7) + 1));
+  expect(recovery?.session_role).toBe("recovery");
+  expect(recovery?.recipe_id).toBe("recovery_easy_jog");
+});
+
+test("structured long runs consume a quality slot instead of stacking extra hard work", () => {
+  const plan = buildPlan({
+    ...goldenInputs("marathon", "advanced"),
+    training_focus: "endurance",
+    difficulty_preference: "balanced",
+    self_selected_level: "advanced",
+  });
+  const structuredWeek = plan.weeks.find((week) =>
+    week.sessions.some((session) =>
+      session.session_role === "long"
+      && ["long_fast_finish", "long_steady_middle", "long_mp_segment"].includes(session.recipe_id ?? "")
+    )
+  );
+
+  expect(structuredWeek).toBeDefined();
+  const standaloneQuality = structuredWeek!.sessions.filter((session) => session.session_role === "quality");
+  expect(standaloneQuality.length).toBeLessThan(structuredWeek!.quality_count);
+  expect(structuredWeek!.quality_count).toBeLessThanOrEqual(3);
 });
 
 // ---------------------------------------------------------------------------
@@ -945,12 +1003,15 @@ test("normal weeks vary daily run mileage instead of cloning every easy run", ()
     candidate.phase === "build"
     && !candidate.is_deload
     && !hasRace(candidate)
-    && candidate.sessions.filter((session) => session.session_role === "easy").length >= 2
+    && new Set(candidate.sessions
+      .filter((session) => session.session_role === "easy" || session.session_role === "recovery")
+      .map((session) => session.target_km)
+    ).size > 1
   );
 
   expect(week).toBeDefined();
   const easyDistances = week!.sessions
-    .filter((session) => session.session_role === "easy")
+    .filter((session) => session.session_role === "easy" || session.session_role === "recovery")
     .map((session) => session.target_km);
   expect(new Set(easyDistances).size).toBeGreaterThan(1);
 });

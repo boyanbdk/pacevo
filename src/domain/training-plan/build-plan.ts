@@ -402,6 +402,14 @@ function constrainVolumesForSessionCap(
 
 const REST_DESCRIPTION = "Full rest day. No running.";
 const REST_RATIONALE = "Rest is when adaptation happens. At least 1 rest day per week is mandatory.";
+const STRIDE_RECIPE_IDS = new Set(["easy_strides", "recovery_strides"]);
+const STRUCTURED_LONG_RECIPE_IDS = new Set([
+  "long_fast_finish",
+  "long_steady_middle",
+  "long_mp_segment",
+]);
+
+type VariableSlotRole = "quality" | "easy" | "recovery";
 
 function dayIndex(dayName: string): number {
   return DAY_NAMES.indexOf(dayName.toLowerCase()) + 1;
@@ -439,6 +447,31 @@ function buildRecipeSession(
     recipe_family: recipe.family,
     stimulus: recipe.stimulus,
   };
+}
+
+function isStrideRecipe(recipe: WorkoutRecipe): boolean {
+  return STRIDE_RECIPE_IDS.has(recipe.id);
+}
+
+function isStructuredLongRecipe(recipe: WorkoutRecipe): boolean {
+  return STRUCTURED_LONG_RECIPE_IDS.has(recipe.id);
+}
+
+function isStructuredLongSession(session: PlannedSession): boolean {
+  return Boolean(session.session_role === "long" && session.recipe_id && STRUCTURED_LONG_RECIPE_IDS.has(session.recipe_id));
+}
+
+function strideDayCap(level: Level): number {
+  if (level === "beginner") return 0;
+  return level === "advanced" ? 2 : 1;
+}
+
+function nextDayIndex(di: number): number {
+  return (di % 7) + 1;
+}
+
+function shouldSchedulePostLongRecovery(level: Level, daysPerWeek: number, isDeload: boolean, weekIndex: number): boolean {
+  return weekIndex > 1 && level !== "beginner" && daysPerWeek >= 5 && !isDeload;
 }
 
 function raceSession(di: number, d: Date, goalRace: GoalRace): PlannedSession {
@@ -617,7 +650,7 @@ function qualityCountForWeek(args: {
 
 function allocateVariableKm(
   remainingKm: number,
-  slots: { day: number; role: "quality" | "easy" }[],
+  slots: { day: number; role: VariableSlotRole }[],
   phase: Phase,
   isDeload: boolean,
   isRaceWeek: boolean,
@@ -629,6 +662,7 @@ function allocateVariableKm(
   let easyIndex = 0;
   const weights = slots.map((slot) => {
     if (slot.role === "quality") return isRaceWeek ? 1.08 : isDeload ? 1.12 : 1.22;
+    if (slot.role === "recovery") return phase === "taper" || isDeload ? 0.68 : 0.74;
     const base = easyWeights[easyIndex++ % easyWeights.length];
     return phase === "taper" || isDeload ? base * 0.95 : base;
   });
@@ -686,8 +720,35 @@ function layoutWeek(
     raceDayIndex,
   });
 
+  const longCtx: WorkoutContext = {
+    dayIndex: longDayIdx,
+    date: addDays(weekStart, longDayIdx - 1),
+    targetKm: longRunKm,
+    paces,
+    level,
+    phase,
+    goalRace,
+    weeklyKm: totalKm,
+    weekIndex,
+  };
+  const selectedLongRecipe = isRaceWeek
+    ? null
+    : selectWorkoutRecipe({
+        target: "long",
+        ctx: longCtx,
+        daysPerWeek,
+        trainingFocus,
+        difficultyPreference,
+        preferCutback: isDeload,
+      });
+
+  if (selectedLongRecipe && isStructuredLongRecipe(selectedLongRecipe)) {
+    qualityCount = Math.max(0, qualityCount - 1);
+  }
+
   const restAfterLong = (longDayIdx % 7) + 1;
   const dayBeforeLong = longDayIdx === 1 ? 7 : longDayIdx - 1;
+  const recoveryDays = new Set<number>();
   const usedDays = new Set<number>();
   if (isRaceWeek) {
     usedDays.add(raceDayIndex);
@@ -695,7 +756,12 @@ function layoutWeek(
     if (raceDayIndex < 7) usedDays.add(raceDayIndex + 1);
   } else {
     usedDays.add(longDayIdx);
-    usedDays.add(restAfterLong);
+    if (shouldSchedulePostLongRecovery(level, daysPerWeek, isDeload, weekIndex)) {
+      recoveryDays.add(restAfterLong);
+      usedDays.add(restAfterLong);
+    } else {
+      usedDays.add(restAfterLong);
+    }
   }
 
   const qDays: number[] = [];
@@ -720,18 +786,27 @@ function layoutWeek(
 
   qualityCount = qDays.length;
   const fixedRaceOrLongKm = isRaceWeek ? raceDistanceKm(goalRace) : longRunKm;
-  const easyDays = Math.max(0, effectiveRunDays - 1 - qualityCount);
+  const supportRunDays = Math.max(0, effectiveRunDays - 1 - qualityCount);
+  const easyDays = Math.max(0, supportRunDays - recoveryDays.size);
+  const supportRoleByDay = new Map<number, "easy" | "recovery">();
+  recoveryDays.forEach(day => supportRoleByDay.set(day, "recovery"));
+  const postQualityRecoveryDays = new Set(
+    qDays
+      .map(nextDayIndex)
+      .filter(day => !usedDays.has(day) && day !== longDayIdx && day !== dayBeforeLong),
+  );
 
   const eDays: number[] = [];
   for (let d = 1; d <= 7 && eDays.length < easyDays; d++) {
     if (!usedDays.has(d) && (!isRaceWeek || d < raceDayIndex!)) {
       eDays.push(d);
+      supportRoleByDay.set(d, postQualityRecoveryDays.has(d) ? "recovery" : "easy");
       usedDays.add(d);
     }
   }
   const variableSlots = [
     ...qDays.map((day) => ({ day, role: "quality" as const })),
-    ...eDays.map((day) => ({ day, role: "easy" as const })),
+    ...Array.from(supportRoleByDay.entries()).map(([day, role]) => ({ day, role })),
   ].sort((a, b) => a.day - b.day);
   const targetKmByDay = allocateVariableKm(
     round1(Math.max(0, totalKm - fixedRaceOrLongKm)),
@@ -742,6 +817,8 @@ function layoutWeek(
   );
 
   const sessions: PlannedSession[] = [];
+  let strideDaysUsed = 0;
+  const maxStrideDays = strideDayCap(level);
   for (let di = 1; di <= 7; di++) {
     const sessionDate = addDays(weekStart, di - 1);
     const ctx: WorkoutContext = {
@@ -763,28 +840,28 @@ function layoutWeek(
     } else if (isRaceWeek && tuneUpDay === di) {
       sessions.push(raceWeekTuneUpSession(ctx));
     } else if (!isRaceWeek && di === longDayIdx) {
-      const recipe = selectWorkoutRecipe({
-        target: "long",
-        ctx,
-        daysPerWeek,
-        trainingFocus,
-        difficultyPreference,
-        preferCutback: isDeload,
-        maxStressScore: qualityCount >= MAX_HARD_SESSIONS[level]
-          ? 2
-          : qualityCount === MAX_HARD_SESSIONS[level] - 1
-            ? 3
-            : undefined,
-      });
-      sessions.push(buildRecipeSession(recipe, ctx, "long"));
+      sessions.push(buildRecipeSession(selectedLongRecipe!, ctx, "long"));
     } else if (!isRaceWeek && di === restAfterLong) {
-      sessions.push(restSession(di, sessionDate));
+      if (supportRoleByDay.get(di) === "recovery") {
+        const recipe = selectWorkoutRecipe({
+          target: "recovery",
+          ctx,
+          daysPerWeek,
+          excludeRecipeIds: ["recovery_strides"],
+          trainingFocus,
+          difficultyPreference,
+        });
+        sessions.push(buildRecipeSession(recipe, ctx, "recovery"));
+      } else {
+        sessions.push(restSession(di, sessionDate));
+      }
     } else if (qDays.includes(di)) {
       const recipe = selectWorkoutRecipe({
         target: "quality",
         ctx,
         daysPerWeek,
         recentRecipeIds: recentQualityRecipeIds,
+        excludeRecipeIds: isDeload && level !== "beginner" ? ["fartlek_8x1min"] : [],
         trainingFocus,
         difficultyPreference,
         maxStressScore: isDeload || phase === "taper" ? 3 : undefined,
@@ -792,14 +869,29 @@ function layoutWeek(
       recentQualityRecipeIds.push(recipe.id);
       sessions.push(buildRecipeSession(recipe, ctx, "quality"));
     } else if (eDays.includes(di)) {
-      const recipe = selectWorkoutRecipe({
-        target: "easy",
-        ctx,
-        daysPerWeek,
-        trainingFocus,
-        difficultyPreference,
-      });
-      sessions.push(buildRecipeSession(recipe, ctx, "easy"));
+      const supportRole = supportRoleByDay.get(di) ?? "easy";
+      if (supportRole === "recovery") {
+        const recipe = selectWorkoutRecipe({
+          target: "recovery",
+          ctx,
+          daysPerWeek,
+          excludeRecipeIds: ["recovery_strides"],
+          trainingFocus,
+          difficultyPreference,
+        });
+        sessions.push(buildRecipeSession(recipe, ctx, "recovery"));
+      } else {
+        const recipe = selectWorkoutRecipe({
+          target: "easy",
+          ctx,
+          daysPerWeek,
+          excludeRecipeIds: strideDaysUsed >= maxStrideDays ? ["easy_strides"] : [],
+          trainingFocus,
+          difficultyPreference,
+        });
+        if (isStrideRecipe(recipe)) strideDaysUsed++;
+        sessions.push(buildRecipeSession(recipe, ctx, "easy"));
+      }
     } else {
       sessions.push(restSession(di, sessionDate));
     }
@@ -911,7 +1003,7 @@ function buildWeeksFromVolumes(args: {
 
     const acwr = computeAcwr(i, volumes);
     const qualityCount = sessions.filter(
-      s => s.session_role === "quality"
+      s => s.session_role === "quality" || isStructuredLongSession(s)
     ).length;
 
     weeks.push({

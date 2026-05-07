@@ -21,6 +21,7 @@ export interface RecipeSelectionOptions {
   ctx: WorkoutContext;
   daysPerWeek: number;
   recentRecipeIds?: string[];
+  excludeRecipeIds?: string[];
   trainingFocus?: TrainingFocus;
   difficultyPreference?: DifficultyPref;
   preferences?: UserWorkoutPreference[];
@@ -29,9 +30,6 @@ export interface RecipeSelectionOptions {
 }
 
 const QUALITY_SESSION_TYPES = new Set<RecipeSessionType>(["tempo", "interval"]);
-const QUALITY_STIMULI = new Set<WorkoutRecipe["stimulus"]>([
-  "threshold", "vo2max", "speed", "race_specific",
-]);
 
 function hash01(value: string): number {
   let hash = 2166136261;
@@ -44,16 +42,16 @@ function hash01(value: string): number {
 
 function matchesTarget(recipe: WorkoutRecipe, target: RecipeSelectionTarget): boolean {
   if (target === "quality") {
-    return recipe.sessionType !== "long"
-      && (QUALITY_SESSION_TYPES.has(recipe.sessionType) || QUALITY_STIMULI.has(recipe.stimulus));
+    return QUALITY_SESSION_TYPES.has(recipe.sessionType);
   }
   return recipe.sessionType === target;
 }
 
 function isEligible(recipe: WorkoutRecipe, options: RecipeSelectionOptions): boolean {
-  const { ctx, daysPerWeek, recentRecipeIds = [] } = options;
+  const { ctx, daysPerWeek, recentRecipeIds = [], excludeRecipeIds = [] } = options;
 
   if (!matchesTarget(recipe, options.target)) return false;
+  if (excludeRecipeIds.includes(recipe.id)) return false;
   if (!recipe.goalRaces.includes(ctx.goalRace)) return false;
   if (!recipe.levels.includes(ctx.level)) return false;
   if (!recipe.phases.includes(ctx.phase)) return false;
@@ -120,6 +118,9 @@ function scoreRecipe(recipe: WorkoutRecipe, options: RecipeSelectionOptions): nu
   if (ctx.goalRace === "marathon" && recipe.stimulus === "race_specific") {
     score += 1.5;
   }
+  if (options.target === "quality" && (recipe.stimulus === "threshold" || recipe.stimulus === "race_specific")) {
+    score += 1;
+  }
   if (options.preferences?.length) {
     score += preferenceBiasForRecipe(recipe.id, recipe.family, options.preferences);
   }
@@ -135,6 +136,7 @@ export function selectWorkoutRecipe(options: RecipeSelectionOptions): WorkoutRec
     const relaxedCandidates = WORKOUT_RECIPES.filter((recipe) => {
       const cutbackAllowed = recipe.id !== "cutback_long" || options.preferCutback;
       return matchesTarget(recipe, options.target)
+        && !(options.excludeRecipeIds ?? []).includes(recipe.id)
         && cutbackAllowed
         && recipe.goalRaces.includes(options.ctx.goalRace)
         && recipe.levels.includes(options.ctx.level)
@@ -148,12 +150,13 @@ export function selectWorkoutRecipe(options: RecipeSelectionOptions): WorkoutRec
       : WORKOUT_RECIPES.filter((recipe) => {
           const cutbackAllowed = recipe.id !== "cutback_long" || options.preferCutback;
           return matchesTarget(recipe, options.target)
+            && !(options.excludeRecipeIds ?? []).includes(recipe.id)
             && cutbackAllowed
             && recipe.goalRaces.includes(options.ctx.goalRace)
             && recipe.levels.includes(options.ctx.level)
             && recipe.stressScore <= 2
             && options.daysPerWeek >= recipe.minDaysPerWeek;
-        });
+      });
     const nonRecent = volumeRelaxedCandidates.filter(
       recipe => !(options.recentRecipeIds ?? []).includes(recipe.id),
     );
