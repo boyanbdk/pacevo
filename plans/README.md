@@ -2,11 +2,18 @@
 
 ## Source Of Truth
 
-When a future chat says "implement the plan", use this file:
+When a future chat says "implement the plan" or "continue the generation plan", use this file:
 
-`plans/adaptive-workout-generation/coach-plan-rebuild.md`
+`plans/adaptive-workout-generation/coach-plan-finish.md`
 
-That is the canonical execution plan for Pacevo.
+That is the current completed finish pass for Pacevo's adaptive workout generation work. It builds on the earlier rebuild and polish plans.
+
+## Baseline Plans
+
+These files are implementation history and useful technical background:
+
+- `plans/adaptive-workout-generation/coach-plan-rebuild.md`
+- `plans/adaptive-workout-generation/coach-plan-polish.md`
 
 ## Reference Only
 

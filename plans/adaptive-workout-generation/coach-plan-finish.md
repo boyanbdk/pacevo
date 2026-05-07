@@ -6,6 +6,15 @@ A second polish pass to close the gaps surfaced during the May 5, 2026 walkthrou
 
 Each item is local. Together they decide whether the app reads as a confident coach or as a noisy generator.
 
+## Implementation Status
+
+Completed on May 6, 2026.
+
+- Phases 1-5 are implemented.
+- Phase 6 QA completed with fixes for zero-based import matching, file duplicate copy, and stale session log form state after detach.
+- Regression status: `npm test`, `npm run typecheck`, and `npm run build` passed.
+- QA evidence: `.gstack/qa-reports/phase6-adaptive-generation-qa.md`.
+
 ## Inputs
 
 - Walkthrough screenshots from May 5, 2026: continuous calendar with sidebar week list, session detail Structure card.

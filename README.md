@@ -54,7 +54,8 @@ Current limitation: plans are still stored locally in the browser, so the webhoo
 
 ### Planning Docs
 
-- Canonical execution plan: `plans/adaptive-workout-generation/coach-plan-rebuild.md`
+- Current finish pass: `plans/adaptive-workout-generation/coach-plan-finish.md`
+- Baseline execution plan: `plans/adaptive-workout-generation/coach-plan-rebuild.md`
 - Plan routing note: `plans/README.md`
 - Legacy reference plan: `plans/adaptive-workout-generation/legacy-implementation-plan.md`
 
@@ -86,7 +87,7 @@ Current limitation: plans are still stored locally in the browser, so the webhoo
 - Workouts are generated from a recipe library rather than fixed text, with varied easy, long-run, tempo, interval, hills, and fartlek sessions chosen by goal, phase, level, schedule, and preferences.
 - Calendar view on desktop, week list on mobile; each session links to a detail screen with rationale, structure, and pace/RPE/HR display modes.
 - Log sessions manually after each run.
-- Import completed runs from GPX or TCX files (Garmin, Strava, Coros, Suunto, Apple Health exports). Same-date matches are applied automatically; date mismatches surface as suggestions.
+- Import completed runs from GPX or TCX files (Garmin, Strava, Coros, Suunto, Apple Health exports). Same-date matches are pre-selected for import; the linked planned session can be changed, detached, or reattached later.
 - Like, dislike, favourite, and swap workouts. Feedback persists locally and safely biases future workout selection without increasing hard-session count above guardrails.
 - Adaptive layer: after logging or feedback, the plan checks injury flags, ACWR load ratios, aerobic deficit, missed sessions, fitness/VDOT changes, and learned preferences; it creates a new plan version when an adjustment is needed, with a plain-English explanation for every change.
 - Full version history — prior weeks are never mutated.
@@ -112,7 +113,7 @@ Current limitation: plans are still stored locally in the browser, so the webhoo
 | `/app/plans` | All training plans |
 | `/app/plans/new` | Plan onboarding form |
 | `/app/plans/[id]` | Plan calendar, session logging, imports, adaptations |
-| `/app/plans/[id]/sessions/[sessionId]` | Individual session detail |
+| `/app/plans/[id]/sessions/[sessionId]` | Individual session detail, logging, and imported activity link controls |
 | `/app/settings` | Default paces and display preferences |
 
 ---
