@@ -253,6 +253,28 @@ test("movePlannedSessionDate swaps workout dates and records a user edit version
   expect(rest?.type).toBe("rest");
 });
 
+test("movePlannedSessionDate does not label same-week moves", () => {
+  const plan = createPlan(INPUTS, buildPlan(INPUTS));
+  savePlan(plan);
+
+  const weekIndex = plan.plan.weeks.findIndex((week) =>
+    week.sessions.some((session) => session.type !== "rest" && session.type !== "race"),
+  );
+  const source = plan.plan.weeks[weekIndex].sessions.find((session) => session.type !== "rest" && session.type !== "race")!;
+  const target = plan.plan.weeks[weekIndex].sessions.find((session) => session.type === "rest")!;
+
+  const updated = movePlannedSessionDate(
+    plan.id,
+    { weekIndex, dayIndex: source.day_index },
+    { weekIndex, dayIndex: target.day_index },
+  );
+  const moved = updated.plan.weeks[weekIndex].sessions.find((session) => session.day_index === target.day_index);
+
+  expect(moved?.type).toBe(source.type);
+  expect(moved?.moved_from_week_index).toBeNull();
+  expect(moved?.moved_from_day_index).toBeNull();
+});
+
 test("movePlannedSessionDate labels cross-week moves with their origin week", () => {
   const plan = createPlan(INPUTS, buildPlan(INPUTS));
   savePlan(plan);
@@ -276,6 +298,39 @@ test("movePlannedSessionDate labels cross-week moves with their origin week", ()
   expect(moved?.type).toBe("easy");
   expect(moved?.moved_from_week_index).toBe(sourceWeekIndex);
   expect(moved?.moved_from_day_index).toBe(source.day_index);
+});
+
+test("movePlannedSessionDate clears origin labels when sessions return to their original week", () => {
+  const plan = createPlan(INPUTS, buildPlan(INPUTS));
+  savePlan(plan);
+
+  const sourceWeekIndex = plan.plan.weeks.findIndex((week) =>
+    week.sessions.some((session) => session.type === "easy"),
+  );
+  const targetWeekIndex = plan.plan.weeks.findIndex((week, index) =>
+    index > sourceWeekIndex + 1 && week.sessions.some((session) => session.type === "rest"),
+  );
+  const source = plan.plan.weeks[sourceWeekIndex].sessions.find((session) => session.type === "easy")!;
+  const target = plan.plan.weeks[targetWeekIndex].sessions.find((session) => session.type === "rest")!;
+
+  const movedAway = movePlannedSessionDate(
+    plan.id,
+    { weekIndex: sourceWeekIndex, dayIndex: source.day_index },
+    { weekIndex: targetWeekIndex, dayIndex: target.day_index },
+  );
+  expect(movedAway.plan.weeks[targetWeekIndex].sessions.find((session) => session.day_index === target.day_index)?.moved_from_week_index)
+    .toBe(sourceWeekIndex);
+
+  const movedBack = movePlannedSessionDate(
+    plan.id,
+    { weekIndex: targetWeekIndex, dayIndex: target.day_index },
+    { weekIndex: sourceWeekIndex, dayIndex: source.day_index },
+  );
+  const restored = movedBack.plan.weeks[sourceWeekIndex].sessions.find((session) => session.day_index === source.day_index);
+
+  expect(restored?.type).toBe(source.type);
+  expect(restored?.moved_from_week_index).toBeNull();
+  expect(restored?.moved_from_day_index).toBeNull();
 });
 
 test("movePlannedSessionDate blocks edits that create consecutive hard days", () => {

@@ -637,10 +637,22 @@ function validateMovedSchedule(plan: TrainingPlan): void {
 function movedSessionWithOrigin(
   session: PlannedSession,
   source: PlanSessionSlot,
+  target: PlanSessionSlot,
   targetSession: PlannedSession,
 ): PlannedSession {
   const moved = moveSessionToSlot(session, targetSession);
+  const origin = {
+    weekIndex: session.moved_from_week_index ?? source.weekIndex,
+    dayIndex: session.moved_from_day_index ?? source.dayIndex,
+  };
   if (session.type === "rest") {
+    return {
+      ...moved,
+      moved_from_week_index: null,
+      moved_from_day_index: null,
+    };
+  }
+  if (target.weekIndex === origin.weekIndex) {
     return {
       ...moved,
       moved_from_week_index: null,
@@ -649,8 +661,8 @@ function movedSessionWithOrigin(
   }
   return {
     ...moved,
-    moved_from_week_index: source.weekIndex,
-    moved_from_day_index: source.dayIndex,
+    moved_from_week_index: origin.weekIndex,
+    moved_from_day_index: origin.dayIndex,
   };
 }
 
@@ -676,8 +688,8 @@ export function movePlannedSessionDate(
     throw new Error("Logged workout dates are locked. Remove the log before moving this workout.");
   }
 
-  const movedSource = movedSessionWithOrigin(sourceSession, source, targetSession);
-  const movedTarget = movedSessionWithOrigin(targetSession, target, sourceSession);
+  const movedSource = movedSessionWithOrigin(sourceSession, source, target, targetSession);
+  const movedTarget = movedSessionWithOrigin(targetSession, target, source, sourceSession);
   const nextWeeks = plan.plan.weeks.map((week, weekIndex) => {
     if (weekIndex !== source.weekIndex && weekIndex !== target.weekIndex) return week;
     const sessions = week.sessions

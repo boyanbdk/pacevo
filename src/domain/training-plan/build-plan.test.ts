@@ -1,7 +1,7 @@
 // Golden tests for the TypeScript training plan builder.
 // Must pass the same invariants as tests/test_build_plan.py.
 
-import { test, expect } from "vitest";
+import { test, expect, vi } from "vitest";
 import { buildPlan } from "./build-plan";
 import { vdotFromRace, pacesFromVdot, riegelPredict, tanakaHrmax, hrZones } from "./vdot";
 import { classifyRunner } from "./classify-runner";
@@ -734,6 +734,52 @@ test.each(MILEAGE_MATRIX)(
     }
   }
 );
+
+test("marathon taper follows peak-relative three-week distribution", () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-05-07T12:00:00Z"));
+  try {
+    const plan = buildPlan({
+      goal_race: "marathon",
+      goal_date: "2026-08-23",
+      current_weekly_km: 57,
+      longest_recent_km: 28,
+      recent_race: { distance_m: 10000, time_s: 45 * 60 },
+      estimated_race_distance_m: null,
+      estimated_race_time_s: null,
+      age: 35,
+      resting_hr: 50,
+      max_hr: null,
+      days_per_week: 6,
+      session_minutes_cap: null,
+      long_run_day: "saturday",
+      surface: "road",
+      injury_flags: [],
+      self_selected_level: "intermediate",
+      volume_preference: "steady",
+      difficulty_preference: "balanced",
+      training_focus: "endurance",
+    });
+
+    const taperWeeks = plan.weeks.filter((week) => week.phase === "taper");
+    expect(taperWeeks).toHaveLength(3);
+    const peak = Math.max(...plan.weeks.filter((week) => week.phase !== "taper").map((week) => week.total_km));
+    const [threeWeeksOut, twoWeeksOut, raceWeek] = taperWeeks;
+    const threeWeeksRatio = comparableTaperKm(threeWeeksOut) / peak;
+    const twoWeeksRatio = comparableTaperKm(twoWeeksOut) / peak;
+    const raceWeekTrainingRatio = comparableTaperKm(raceWeek) / peak;
+
+    expect(threeWeeksRatio).toBeGreaterThanOrEqual(0.85);
+    expect(threeWeeksRatio).toBeLessThanOrEqual(0.90);
+    expect(twoWeeksRatio).toBeGreaterThanOrEqual(0.65);
+    expect(twoWeeksRatio).toBeLessThanOrEqual(0.70);
+    expect(raceWeekTrainingRatio).toBeGreaterThanOrEqual(0.30);
+    expect(raceWeekTrainingRatio).toBeLessThanOrEqual(0.40);
+    expect(raceWeek.sessions.some((session) => session.type === "race")).toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
+});
 
 test.each(MILEAGE_MATRIX)(
   "$tier mileage $goal plan: deload weeks dip below the prior week",

@@ -82,6 +82,12 @@ const TAPER_WEEKS: Record<GoalRace, number> = {
   "5K": 1, "10K": 1, "half": 2, "marathon": 3,
 };
 
+const MARATHON_TAPER_FACTORS = {
+  threeWeeksOut: 0.875,
+  twoWeeksOut: 0.675,
+  raceWeekTraining: 0.35,
+};
+
 const QUALITY_COUNT: Record<Phase, Record<Level, number>> = {
   base:  { beginner: 0, intermediate: 1, advanced: 1 },
   build: { beginner: 1, intermediate: 2, advanced: 2 },
@@ -136,6 +142,16 @@ function raceDistanceKm(goalRace: GoalRace): number {
     half: 21.1,
     marathon: 42.2,
   }[goalRace];
+}
+
+function raceKmForWeek(week: TrainingWeek): number {
+  return round1(week.sessions
+    .filter((session) => session.type === "race")
+    .reduce((sum, session) => sum + (session.target_km ?? 0), 0));
+}
+
+function trainingKmExcludingRace(week: TrainingWeek): number {
+  return round1(Math.max(0, week.total_km - raceKmForWeek(week)));
 }
 
 // ---------------------------------------------------------------------------
@@ -211,17 +227,31 @@ function buildVolumeCurve(
     const phase = phases[i];
     if (phase === "taper") {
       const taperIndex = i - effectiveTaperStart;
-      const startFactor = TAPER_START_VOLUME_FACTOR[goalRace];
-      const finalFactor = TAPER_FINAL_VOLUME_FACTOR[goalRace];
-      const factor = taperCount === 1
-        ? finalFactor
-        : startFactor + (finalFactor - startFactor) * (taperIndex / (taperCount - 1));
-      let vol = round1(actualPeak * factor);
-      if (taperCount === 1) {
-        vol = round1(actualPeak * finalFactor);
+      let vol: number;
+      if (goalRace === "marathon") {
+        const factors = taperCount >= 3
+          ? [
+              MARATHON_TAPER_FACTORS.threeWeeksOut,
+              MARATHON_TAPER_FACTORS.twoWeeksOut,
+              MARATHON_TAPER_FACTORS.raceWeekTraining,
+            ]
+          : taperCount === 2
+            ? [MARATHON_TAPER_FACTORS.twoWeeksOut, MARATHON_TAPER_FACTORS.raceWeekTraining]
+            : [MARATHON_TAPER_FACTORS.raceWeekTraining];
+        vol = round1(actualPeak * factors[Math.min(taperIndex, factors.length - 1)]);
+      } else {
+        const startFactor = TAPER_START_VOLUME_FACTOR[goalRace];
+        const finalFactor = TAPER_FINAL_VOLUME_FACTOR[goalRace];
+        const factor = taperCount === 1
+          ? finalFactor
+          : startFactor + (finalFactor - startFactor) * (taperIndex / (taperCount - 1));
+        vol = round1(actualPeak * factor);
+        if (taperCount === 1) {
+          vol = round1(actualPeak * finalFactor);
+        }
       }
       const previous = volumes.at(-1);
-      if (previous !== undefined) {
+      if (goalRace !== "marathon" && previous !== undefined) {
         vol = Math.min(vol, previous);
       }
       volumes.push(vol);
@@ -256,9 +286,10 @@ function buildVolumeCurve(
 
 function deloadFlagsForPhases(phases: Phase[]): boolean[] {
   let loadWeekCounter = 0;
-  return phases.map((phase) => {
+  return phases.map((phase, index) => {
     if (phase === "taper") return false;
     loadWeekCounter++;
+    if (phases[index + 1] === "taper") return false;
     return loadWeekCounter % DELOAD_EVERY_N_WEEKS === 0;
   });
 }
@@ -739,7 +770,13 @@ function buildWeeksFromVolumes(args: {
     if (raceDayIndex !== null) {
       const raceWeekRunDays = plannedRunDayCount(daysPerWeek, phase, isDeload, true, goalRace);
       const preRaceMinimumKm = (raceWeekRunDays - 1) * (goalRace === "marathon" ? 3 : 2.5);
-      vol = round1(Math.max(vol, raceDistanceKm(goalRace) + preRaceMinimumKm));
+      const marathonPreRaceTrainingKm = goalRace === "marathon"
+        ? round1(Math.max(...volumes.slice(0, i), vol) * MARATHON_TAPER_FACTORS.raceWeekTraining)
+        : null;
+      const preRaceTrainingKm = marathonPreRaceTrainingKm === null
+        ? Math.max(0, vol - raceDistanceKm(goalRace), preRaceMinimumKm)
+        : Math.max(preRaceMinimumKm, marathonPreRaceTrainingKm);
+      vol = round1(raceDistanceKm(goalRace) + preRaceTrainingKm);
       volumes[i] = vol;
     }
     const longRunKm = raceDayIndex !== null
@@ -791,7 +828,7 @@ function buildWeeksFromVolumes(args: {
 
 function validatePlan(weeks: TrainingWeek[], volumes: number[], goalRace: GoalRace): string[] {
   const warnings: string[] = [];
-  const peakVol = Math.max(...volumes);
+  const peakVol = Math.max(...weeks.map(trainingKmExcludingRace));
   let deloadGap = 0;
 
   for (let i = 0; i < weeks.length; i++) {
@@ -825,12 +862,12 @@ function validatePlan(weeks: TrainingWeek[], volumes: number[], goalRace: GoalRa
 
   const taperWeeks = weeks.filter(w => w.phase === "taper");
   if (taperWeeks.length && peakVol > 0) {
-    const finalVol = taperWeeks[taperWeeks.length - 1].total_km;
-    const reduction = 1 - finalVol / peakVol;
-    const minimumReduction = goalRace === "marathon" ? 0.15 : 0.38;
+    const finalTrainingVol = trainingKmExcludingRace(taperWeeks[taperWeeks.length - 1]);
+    const reduction = 1 - finalTrainingVol / peakVol;
+    const minimumReduction = goalRace === "marathon" ? 0.60 : 0.38;
     if (reduction < minimumReduction) {
       warnings.push(
-        `Taper final week ${finalVol.toFixed(0)} km is only ${Math.round(reduction * 100)}% below peak. Target a clearer race-week reduction.`
+        `Taper final week training load ${finalTrainingVol.toFixed(0)} km is only ${Math.round(reduction * 100)}% below peak. Target a clearer race-week reduction.`
       );
     }
   }
@@ -999,8 +1036,9 @@ export function buildPlan(inputs: PlanInputs): TrainingPlan {
   for (let i = 1; i < weeks.length; i++) {
     const prev = weeks[i - 1];
     const curr = weeks[i];
-    if (curr.phase === "taper" && curr.total_km > prev.total_km) {
-      volumes[i] = prev.total_km;
+    if (curr.phase === "taper" && prev.phase === "taper" && trainingKmExcludingRace(curr) > trainingKmExcludingRace(prev)) {
+      const raceKm = raceKmForWeek(curr);
+      volumes[i] = round1(raceKm + trainingKmExcludingRace(prev));
       adjustedForTaper = true;
     }
   }
