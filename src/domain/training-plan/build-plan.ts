@@ -468,20 +468,107 @@ function raceSession(di: number, d: Date, goalRace: GoalRace): PlannedSession {
   };
 }
 
+function fmtPace(sKm: number): string {
+  const m = Math.floor(sKm / 60);
+  const s = sKm % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function raceWeekTuneUpDay(raceDayIndex: number | null): number | null {
+  if (raceDayIndex === null || raceDayIndex < 4) return null;
+  if (raceDayIndex === 4) return 1;
+  if (raceDayIndex === 5) return 2;
+  return 3;
+}
+
+function raceWeekPace(goalRace: GoalRace, paces: Paces): number {
+  if (goalRace === "marathon") return paces.M ?? paces.E_low;
+  if (goalRace === "half") return paces.T ?? paces.M ?? paces.E_low;
+  if (goalRace === "10K") return paces.T ?? paces.I ?? paces.E_low;
+  return paces.I ?? paces.T ?? paces.E_low;
+}
+
+function raceWeekTuneUpSession(ctx: WorkoutContext): PlannedSession {
+  const pace = raceWeekPace(ctx.goalRace, ctx.paces);
+  const maxKm = ctx.level === "advanced" ? 8 : ctx.level === "intermediate" ? 6 : 4.5;
+  const km = round1(Math.max(3, Math.min(maxKm, ctx.targetKm)));
+  const raceLabel: Record<GoalRace, string> = {
+    "5K": "5K",
+    "10K": "10K",
+    half: "half-marathon",
+    marathon: "marathon",
+  };
+  const repText = (() => {
+    if (ctx.level === "beginner") {
+      return `3x2 min at ${raceLabel[ctx.goalRace]} effort`;
+    }
+    if (ctx.goalRace === "marathon") {
+      return ctx.level === "advanced"
+        ? "3x2 km at marathon pace"
+        : "2x2 km at marathon pace";
+    }
+    if (ctx.goalRace === "half") {
+      return ctx.level === "advanced"
+        ? "3x1.5 km at half-marathon effort"
+        : "2x1.5 km at half-marathon effort";
+    }
+    return ctx.level === "advanced"
+      ? `4x1 km at ${raceLabel[ctx.goalRace]} effort`
+      : `3x1 km at ${raceLabel[ctx.goalRace]} effort`;
+  })();
+  const sessionType = ctx.goalRace === "marathon" ? "marathon_pace" : "tempo";
+
+  return {
+    day_index: ctx.dayIndex,
+    date: isoDate(ctx.date),
+    type: sessionType,
+    session_role: "quality",
+    recipe_id: "race_week_tune_up",
+    recipe_family: "tempo_race_pace",
+    stimulus: "race_specific",
+    target_km: km,
+    target_duration_min: Math.round(km * ctx.paces.E_high / 60) + 6,
+    pace_low_s_km: pace,
+    pace_high_s_km: pace,
+    hr_zone: ctx.goalRace === "marathon" ? "Z3" : "Z4",
+    target_rpe: ctx.level === "beginner" ? 6 : 7,
+    description: `Race-week tune-up. Short ${raceLabel[ctx.goalRace]}-specific reps to keep race rhythm sharp.`,
+    rationale: "Race-week intensity stays brief and specific so the runner rehearses goal rhythm without adding meaningful fatigue.",
+    warmup: "10 min easy jog",
+    main_set: `${repText} (${fmtPace(pace)} /km), full easy recovery between reps`,
+    cooldown: "5-10 min easy jog",
+  };
+}
+
+function shouldAddPreRaceRestDay(
+  level: Level,
+  daysPerWeek: number,
+  goalRace: GoalRace,
+  isFinalPreRaceWeek: boolean,
+): boolean {
+  if (!isFinalPreRaceWeek) return false;
+  if (level === "beginner") return daysPerWeek >= 4;
+  if (level === "intermediate") return daysPerWeek >= 5;
+  return goalRace === "marathon" && daysPerWeek >= 6;
+}
+
 function plannedRunDayCount(
   daysPerWeek: number,
   phase: Phase,
   isDeload: boolean,
   isRaceWeek: boolean,
   goalRace: GoalRace,
+  level: Level,
+  isFinalPreRaceWeek = false,
 ): number {
   let runDays = daysPerWeek;
   if (isRaceWeek) {
     const raceWeekCap = goalRace === "5K" || goalRace === "10K" ? 3 : 4;
     runDays = Math.min(runDays, raceWeekCap);
   } else {
-    if (isDeload && runDays >= 4) runDays -= 1;
-    if (phase === "taper" && runDays >= 4) runDays -= 1;
+    if ((isDeload || phase === "taper") && shouldAddPreRaceRestDay(level, runDays, goalRace, isFinalPreRaceWeek)) {
+      runDays -= 1;
+    }
   }
   return Math.max(isRaceWeek ? 1 : 2, Math.min(7, runDays));
 }
@@ -519,7 +606,7 @@ function qualityCountForWeek(args: {
   if (isDeload && count > 0) count = 1;
   if (phase === "taper" && count > 0) count = 1;
   if (isRaceWeek) {
-    count = raceDayIndex !== null && raceDayIndex >= 4 ? Math.min(count, 1) : 0;
+    count = raceDayIndex !== null && raceDayIndex >= 4 && effectiveRunDays >= 2 ? 1 : 0;
   }
 
   const requiredRaceOrLong = 1;
@@ -575,10 +662,19 @@ function layoutWeek(
   difficultyPreference: PlanInputs["difficulty_preference"],
   recentQualityRecipeIds: string[],
   raceDayIndex: number | null,
+  isFinalPreRaceWeek: boolean,
 ): PlannedSession[] {
   const longDayIdx = dayIndex(longRunDay);
   const isRaceWeek = raceDayIndex !== null;
-  const effectiveRunDays = plannedRunDayCount(daysPerWeek, phase, isDeload, isRaceWeek, goalRace);
+  const effectiveRunDays = plannedRunDayCount(
+    daysPerWeek,
+    phase,
+    isDeload,
+    isRaceWeek,
+    goalRace,
+    level,
+    isFinalPreRaceWeek,
+  );
   let qualityCount = qualityCountForWeek({
     weekIndex,
     phase,
@@ -603,7 +699,13 @@ function layoutWeek(
   }
 
   const qDays: number[] = [];
-  for (let d = 1; d <= 7 && qDays.length < qualityCount; d++) {
+  const tuneUpDay = isRaceWeek && qualityCount > 0 ? raceWeekTuneUpDay(raceDayIndex) : null;
+  if (tuneUpDay !== null && !usedDays.has(tuneUpDay)) {
+    qDays.push(tuneUpDay);
+    usedDays.add(tuneUpDay);
+  }
+
+  for (let d = 1; d <= 7 && qDays.length < qualityCount && !isRaceWeek; d++) {
     const tooCloseToRace = raceDayIndex !== null && Math.abs(d - raceDayIndex) <= 2;
     if (
       !usedDays.has(d)
@@ -658,6 +760,8 @@ function layoutWeek(
 
     if (isRaceWeek && di === raceDayIndex) {
       sessions.push(raceSession(di, sessionDate, goalRace));
+    } else if (isRaceWeek && tuneUpDay === di) {
+      sessions.push(raceWeekTuneUpSession(ctx));
     } else if (!isRaceWeek && di === longDayIdx) {
       const recipe = selectWorkoutRecipe({
         target: "long",
@@ -767,8 +871,10 @@ function buildWeeksFromVolumes(args: {
     let vol = volumes[i];
     const weekStart = addDays(planStart, i * 7);
     const raceDayIndex = raceDayIndexForWeek(weekStart, goalDate);
+    const isFinalPreRaceWeek = raceDayIndex === null
+      && raceDayIndexForWeek(addDays(weekStart, 7), goalDate) !== null;
     if (raceDayIndex !== null) {
-      const raceWeekRunDays = plannedRunDayCount(daysPerWeek, phase, isDeload, true, goalRace);
+      const raceWeekRunDays = plannedRunDayCount(daysPerWeek, phase, isDeload, true, goalRace, level);
       const preRaceMinimumKm = (raceWeekRunDays - 1) * (goalRace === "marathon" ? 3 : 2.5);
       const marathonPreRaceTrainingKm = goalRace === "marathon"
         ? round1(Math.max(...volumes.slice(0, i), vol) * MARATHON_TAPER_FACTORS.raceWeekTraining)
@@ -800,6 +906,7 @@ function buildWeeksFromVolumes(args: {
       difficultyPreference ?? "balanced",
       recentQualityRecipeIds,
       raceDayIndex,
+      isFinalPreRaceWeek,
     );
 
     const acwr = computeAcwr(i, volumes);

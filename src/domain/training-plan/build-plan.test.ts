@@ -371,7 +371,7 @@ test("generated session content stays aligned with recipe metadata", () => {
   const plan = buildPlan(INTERMEDIATE_HALF);
   const runSessions = plan.weeks
     .flatMap(w => w.sessions)
-    .filter(s => s.type !== "rest" && s.type !== "race");
+    .filter(s => s.type !== "rest" && s.type !== "race" && s.recipe_id !== "race_week_tune_up");
 
   for (const session of runSessions) {
     const recipe = getRecipeById(session.recipe_id!);
@@ -805,7 +805,7 @@ test.each(MILEAGE_MATRIX)(
   }
 );
 
-test("deload weeks reduce mileage and run count without removing quality stimulus", () => {
+test("ordinary deload weeks reduce mileage without automatically removing a run day", () => {
   const plan = buildPlan({
     ...INTERMEDIATE_HALF,
     goal_date: futureDate(18),
@@ -820,13 +820,29 @@ test("deload weeks reduce mileage and run count without removing quality stimulu
   const runCount = deload.sessions.filter((session) => session.type !== "rest").length;
 
   expect(deload.total_km).toBeLessThan(previous.total_km);
-  expect(runCount).toBeLessThan(INTERMEDIATE_HALF.days_per_week);
+  expect(runCount).toBe(INTERMEDIATE_HALF.days_per_week);
   expect(deload.quality_count).toBeGreaterThanOrEqual(1);
   expect(deload.sessions.some((session) =>
     session.session_role === "quality"
     && session.stimulus !== "aerobic"
     && session.stimulus !== "recovery"
   )).toBe(true);
+});
+
+test("final pre-race taper week can add an extra rest day for intermediate runners", () => {
+  const plan = buildPlan({
+    ...INTERMEDIATE_HALF,
+    goal_date: futureDate(18),
+    days_per_week: 5,
+    self_selected_level: "intermediate",
+  });
+  const raceWeekIndex = plan.weeks.findIndex(hasRace);
+  const preRaceWeek = plan.weeks[raceWeekIndex - 1];
+  const runCount = preRaceWeek.sessions.filter((session) => session.type !== "rest").length;
+
+  expect(raceWeekIndex).toBeGreaterThan(0);
+  expect(preRaceWeek.phase).toBe("taper");
+  expect(runCount).toBe(4);
 });
 
 test("post-deload weeks rebound instead of freezing at deload mileage", () => {
@@ -864,6 +880,58 @@ test("race week uses fewer run days and carries the race distance", () => {
   expect(race?.target_km).toBe(raceDistanceKm("10K"));
   expect(runCount).toBeLessThan(plan.meta.weeks_total > 1 ? 5 : 6);
   expect(raceWeek.sessions.some((session) => session.session_role === "long")).toBe(false);
+});
+
+test.each([
+  {
+    label: "beginner",
+    inputs: {
+      ...INTERMEDIATE_HALF,
+      goal_race: "5K" as const,
+      goal_date: futureDate(10),
+      current_weekly_km: 18,
+      longest_recent_km: 6,
+      days_per_week: 4,
+      self_selected_level: "beginner" as const,
+      recent_race: null,
+    },
+  },
+  {
+    label: "intermediate",
+    inputs: {
+      ...INTERMEDIATE_HALF,
+      goal_race: "10K" as const,
+      goal_date: futureDate(10),
+      current_weekly_km: 45,
+      longest_recent_km: 14,
+      days_per_week: 5,
+      self_selected_level: "intermediate" as const,
+    },
+  },
+  {
+    label: "advanced",
+    inputs: {
+      ...INTERMEDIATE_HALF,
+      goal_race: "marathon" as const,
+      goal_date: futureDate(18),
+      current_weekly_km: 100,
+      longest_recent_km: 32,
+      days_per_week: 6,
+      self_selected_level: "advanced" as const,
+      recent_race: { distance_m: 10000, time_s: 36 * 60 },
+    },
+  },
+])("race week includes an early race-specific tune-up for $label runners", ({ inputs }) => {
+  const plan = buildPlan(inputs);
+  const raceWeek = plan.weeks.find(hasRace);
+  const tuneUp = raceWeek?.sessions.find((session) => session.recipe_id === "race_week_tune_up");
+
+  expect(raceWeek).toBeDefined();
+  expect(tuneUp).toBeDefined();
+  expect([1, 2, 3]).toContain(tuneUp?.day_index);
+  expect(tuneUp?.stimulus).toBe("race_specific");
+  expect(tuneUp?.session_role).toBe("quality");
+  expect(tuneUp?.main_set).toMatch(/race|marathon|5K|10K|half/i);
 });
 
 test("normal weeks vary daily run mileage instead of cloning every easy run", () => {
